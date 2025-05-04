@@ -1,0 +1,63 @@
+@startuml Annotation Tool
+actor UserA as "User A"
+participant Frontend
+participant Redis      as "Redis (State Store)"
+participant Backend
+participant SQLDB      as "SQL Database"
+participant AIService  as "AI Annotation\nMicroservice"
+
+== Project Selection ==
+UserA -> Frontend        : selectProject(projectId)
+Frontend -> Backend      : getProjectList()
+Backend -> SQLDB         : SELECT * FROM Projects
+SQLDB --> Backend        : projects[]
+Backend --> Frontend     : projects[]
+
+UserA -> Frontend        : openProject(projectId)
+Frontend -> Backend      : loadProject(projectId)
+Backend -> SQLDB         : SELECT data, permissions\nFROM Project WHERE id=projectId
+SQLDB --> Backend        : projectData, perms
+Backend --> Frontend     : projectData, perms
+
+== Real-Time Editing Operations ==
+loop user performs editing actions
+    UserA -> Frontend    : startOperation(operationType)
+    alt operationType = Draw bounding box
+        Frontend -> Frontend : renderBoundingBox(coords)
+    else operationType = Skeleton labeling
+        Frontend -> Frontend : renderSkeleton(points, edges)
+    else operationType = Edit properties
+        Frontend -> Frontend : openProperties(name, color, opacity)
+    else operationType = Add comment
+        Frontend -> Frontend : showCommentInput(text)
+    end
+
+    Frontend -> Redis    : saveState(projectId, operationType, details)
+    Redis --> Frontend   : OK
+
+    Frontend -> Backend  : persistOperation(projectId, operationType, details)
+    Backend -> SQLDB     : INSERT INTO AnnotationLog(...)
+    SQLDB --> Backend    : OK
+    Backend --> Frontend : OK
+end
+
+== AI Auto-Annotation ==
+UserA -> Frontend        : uploadImage(imageStream)
+Frontend -> Backend      : streamUpload(imageStream)
+Backend -> AIService     : analyzeImage(stream)
+AIService --> Backend    : annotations[]
+Backend --> Frontend     : annotations[]
+
+alt User accepts annotations
+    Frontend -> Backend  : saveAnnotations(projectId, annotations)
+    Backend -> SQLDB     : INSERT AnnotationRecords
+    SQLDB --> Backend    : OK
+    Backend --> Frontend : OK
+else User discards
+    Frontend --> Backend : discardAnnotations(projectId)
+    Backend -> SQLDB     : DELETE TempAnnotations
+    SQLDB --> Backend    : OK
+    Backend --> Frontend : OK
+end
+
+@enduml
