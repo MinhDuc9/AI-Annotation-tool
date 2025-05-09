@@ -72,7 +72,6 @@ logs/**/*.log
 /.cache
 /.turbo
 /.next/
-/out/
 /nuxt/
 /public/build/
 /public/_headers
