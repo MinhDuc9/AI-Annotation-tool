@@ -24,20 +24,52 @@ export class ProjectService {
 
         const user = await this.userRepository.findOneOrFail({
             where: { id: user_id },
-            relations: ["adminProjects", "writeProjects"],
+            relations: ["adminProjects"],
         });
 
         project.admins = [user];
-        project.writeUsers = [user];
 
         const savedProject = await this.projectRepository.save(project);
 
         return savedProject;
     }
 
-    findAll(id: string): Promise<Project[]> {
-        return this.projectRepository.findBy({ id });
+    async findAll(user_id: string): Promise<
+        {
+            project_id: string;
+            project_name: string;
+            role: "admin" | "writer" | "read";
+        }[]
+    > {
+        const projects = await this.projectRepository
+            .createQueryBuilder("project")
+            .leftJoinAndSelect("project.admins", "admin")
+            .leftJoinAndSelect("project.readUsers", "readUser")
+            .leftJoinAndSelect("project.writeUsers", "writeUser")
+            .where("admin.id = :user_id", { user_id })
+            .orWhere("readUser.id = :user_id", { user_id })
+            .orWhere("writeUser.id = :user_id", { user_id })
+            .getMany();
+
+        return projects.map((project) => {
+            let role: "admin" | "writer" | "read";
+            if (project.admins.some((u) => u.id === user_id)) {
+                role = "admin";
+            } else if (project.writeUsers.some((u) => u.id === user_id)) {
+                role = "writer";
+            } else {
+                role = "read";
+            }
+            return {
+                project_id: project.id,
+                project_name: project.project_name,
+                role,
+            };
+        });
     }
+
+    // TODO: addUser, removeUser, updateRole ...
+    // addUser(project_id: string, user_id: string) {}
 
     findOne(id: number) {
         return `This action returns a #${id} project`;

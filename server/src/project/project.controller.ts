@@ -23,9 +23,9 @@ export class ProjectController {
         return this.projectService.create(createProjectDto, user_id);
     }
 
-    @Get("projects/:id")
-    findAll(@Param("id") id: string) {
-        return this.projectService.findAll(id);
+    @Get("all/:user_id")
+    findAll(@Param("user_id") user_id: string) {
+        return this.projectService.findAll(user_id);
     }
 
     @Get(":id")
