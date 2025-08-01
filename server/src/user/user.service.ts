@@ -1,6 +1,10 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+    Injectable,
+    NotFoundException,
+    BadRequestException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Repository, QueryFailedError } from "typeorm";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { User } from "./entities/user.entity";
@@ -12,19 +16,37 @@ export class UserService {
         private readonly userRepository: Repository<User>,
     ) {}
 
-    create(createUserDto: CreateUserDto) {
+    async create(createUserDto: CreateUserDto) {
         const user: User = new User();
         user.email = createUserDto.email;
         user.username = createUserDto.username;
         user.password = createUserDto.password;
-        return this.userRepository.save(user);
+
+        try {
+            return await this.userRepository.save(user);
+        } catch (error: unknown) {
+            if (error instanceof QueryFailedError) {
+                const driverError = error.driverError as {
+                    code: string;
+                    detail?: string;
+                };
+                if (
+                    driverError.code === "23505" &&
+                    driverError.detail?.includes("email")
+                ) {
+                    throw new BadRequestException("Email already in use");
+                }
+            }
+
+            throw error;
+        }
     }
 
     findAll(): Promise<User[]> {
         return this.userRepository.find();
     }
 
-    async findOne(id: number): Promise<User> {
+    async findOne(id: string): Promise<User> {
         const user = await this.userRepository.findOneBy({ id });
         if (!user) {
             throw new NotFoundException(`User with id ${id} not found`);
@@ -40,7 +62,7 @@ export class UserService {
         return user;
     }
 
-    async update(id: number, updateUserDto: UpdateUserDto): Promise<User> {
+    async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
         const user = await this.userRepository.findOneBy({ id });
 
         if (!user) {
@@ -62,7 +84,7 @@ export class UserService {
         return this.userRepository.save(user);
     }
 
-    async remove(id: number) {
+    async remove(id: string) {
         const check = await this.userRepository.findOneBy({ id });
 
         if (!check) {

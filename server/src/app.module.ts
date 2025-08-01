@@ -2,9 +2,11 @@ import { Module } from "@nestjs/common";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { UserModule } from "./user/user.module";
 import { config } from "dotenv";
+import { UserModule } from "./user/user.module";
 import { User } from "./user/entities/user.entity";
+import { ProjectModule } from "./project/project.module";
+import { Project } from "./project/entities/project.entity";
 
 config();
 
@@ -15,12 +17,13 @@ config();
             host: process.env.HOST,
             port: Number(process.env.SQL_PORT),
             username: process.env.USERNAME,
-            entities: [User],
+            entities: [User, Project],
             database: process.env.DATABASE,
             synchronize: true,
             logging: true,
         }),
         UserModule,
+        ProjectModule,
     ],
     controllers: [AppController],
     providers: [AppService],

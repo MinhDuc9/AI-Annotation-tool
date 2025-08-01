@@ -1,9 +1,10 @@
-import { Entity, Column, PrimaryGeneratedColumn } from "typeorm";
+import { Project } from "src/project/entities/project.entity";
+import { Entity, Column, PrimaryGeneratedColumn, ManyToMany } from "typeorm";
 
 @Entity()
 export class User {
     @PrimaryGeneratedColumn("uuid")
-    id: number;
+    id: string;
 
     @Column({ type: "varchar", length: 30 })
     username: string;
@@ -13,4 +14,10 @@ export class User {
 
     @Column({ type: "varchar" })
     password: string;
+
+    @ManyToMany(() => Project, (project) => project.readUsers)
+    readProjects: Project[];
+
+    @ManyToMany(() => Project, (project) => project.writeUsers)
+    writeProjects: Project[];
 }
