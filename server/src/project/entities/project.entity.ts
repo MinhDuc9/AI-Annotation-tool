@@ -15,6 +15,10 @@ export class Project {
     @Column({ type: "varchar" })
     project_name: string;
 
+    @ManyToMany(() => User, (user) => user.adminProjects)
+    @JoinTable({ name: "project_admin_users" })
+    admins: User[];
+
     @ManyToMany(() => User, (user) => user.readProjects)
     @JoinTable({ name: "project_read_users" })
     readUsers: User[];

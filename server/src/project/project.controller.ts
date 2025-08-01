@@ -15,14 +15,17 @@ import { UpdateProjectDto } from "./dto/update-project.dto";
 export class ProjectController {
     constructor(private readonly projectService: ProjectService) {}
 
-    @Post()
-    create(@Body() createProjectDto: CreateProjectDto) {
-        return this.projectService.create(createProjectDto);
+    @Post(":id")
+    create(
+        @Param("id") user_id: string,
+        @Body() createProjectDto: CreateProjectDto,
+    ) {
+        return this.projectService.create(createProjectDto, user_id);
     }
 
-    @Get()
-    findAll() {
-        return this.projectService.findAll();
+    @Get("projects/:id")
+    findAll(@Param("id") id: string) {
+        return this.projectService.findAll(id);
     }
 
     @Get(":id")

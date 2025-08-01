@@ -1,15 +1,42 @@
 import { Injectable } from "@nestjs/common";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Project } from "./entities/project.entity";
+import { Repository } from "typeorm";
+import { User } from "src/user/entities/user.entity";
 
 @Injectable()
 export class ProjectService {
-    create(createProjectDto: CreateProjectDto) {
-        return "This action adds a new project";
+    constructor(
+        @InjectRepository(Project)
+        private readonly projectRepository: Repository<Project>,
+        @InjectRepository(User)
+        private readonly userRepository: Repository<User>,
+    ) {}
+
+    async create(
+        createProjectDto: CreateProjectDto,
+        user_id: string,
+    ): Promise<Project> {
+        const project = new Project();
+        project.project_name = createProjectDto.project_name;
+
+        const user = await this.userRepository.findOneOrFail({
+            where: { id: user_id },
+            relations: ["adminProjects", "writeProjects"],
+        });
+
+        project.admins = [user];
+        project.writeUsers = [user];
+
+        const savedProject = await this.projectRepository.save(project);
+
+        return savedProject;
     }
 
-    findAll() {
-        return `This action returns all project`;
+    findAll(id: string): Promise<Project[]> {
+        return this.projectRepository.findBy({ id });
     }
 
     findOne(id: number) {

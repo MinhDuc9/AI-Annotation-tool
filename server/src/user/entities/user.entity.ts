@@ -15,6 +15,9 @@ export class User {
     @Column({ type: "varchar" })
     password: string;
 
+    @ManyToMany(() => Project, (project) => project.admins)
+    adminProjects: Project[];
+
     @ManyToMany(() => Project, (project) => project.readUsers)
     readProjects: Project[];
 
