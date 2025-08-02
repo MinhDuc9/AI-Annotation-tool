@@ -24,7 +24,7 @@ export class JwtAuthGuard implements CanActivate {
         );
         if (isPublic) return true;
 
-        // 2. otherwise do your normal JWT check
+        // 2. otherwise do normal JWT check
         const req = ctx.switchToHttp().getRequest<Request>();
         const authHeader = req.headers.authorization;
         if (typeof authHeader !== "string") {

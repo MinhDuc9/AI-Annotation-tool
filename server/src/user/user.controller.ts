@@ -16,7 +16,7 @@ import { Public } from "src/auth/public.decorator";
 export class UserController {
     constructor(private readonly userService: UserService) {}
 
-    @Post()
+    @Post("register")
     @Public()
     create(@Body() createUserDto: CreateUserDto) {
         return this.userService.create(createUserDto);
@@ -33,13 +33,13 @@ export class UserController {
         return this.userService.findOne(email);
     }
 
-    @Patch(":id")
-    update(@Param("id") id: string, @Body() updateUserDto: UpdateUserDto) {
-        return this.userService.update(id, updateUserDto);
+    @Patch()
+    update(@Body() updateUserDto: UpdateUserDto) {
+        return this.userService.update(updateUserDto);
     }
 
-    @Delete(":id")
-    remove(@Param("id") id: string) {
-        return this.userService.remove(id);
+    @Delete()
+    remove() {
+        return this.userService.remove();
     }
 }
