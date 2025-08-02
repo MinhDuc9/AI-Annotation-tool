@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { JwtService } from "src/jwt/jwt.service";
 import { User } from "src/user/entities/user.entity";
@@ -47,5 +47,20 @@ export class AuthService {
 
             throw error;
         }
+    }
+
+    async login(email: string): Promise<string> {
+        const user = await this.userRepository.findOneBy({ email });
+
+        if (!user) {
+            throw new NotFoundException(`User with email ${email} not found`);
+        }
+
+        const token = this.jwtService.createJWT({
+            id: user.id,
+            email: user.email,
+        });
+
+        return token;
     }
 }

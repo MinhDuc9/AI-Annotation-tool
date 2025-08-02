@@ -8,6 +8,8 @@ import { User } from "./user/entities/user.entity";
 import { ProjectModule } from "./project/project.module";
 import { Project } from "./project/entities/project.entity";
 import { AuthModule } from "./auth/auth.module";
+import { APP_GUARD } from "@nestjs/core";
+import { JwtAuthGuard } from "./jwt/jwt-auth.guard";
 
 @Module({
     imports: [
@@ -27,6 +29,12 @@ import { AuthModule } from "./auth/auth.module";
         AuthModule,
     ],
     controllers: [AppController],
-    providers: [AppService],
+    providers: [
+        AppService,
+        {
+            provide: APP_GUARD,
+            useClass: JwtAuthGuard,
+        },
+    ],
 })
 export class AppModule {}

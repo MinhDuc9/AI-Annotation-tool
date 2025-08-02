@@ -20,24 +20,12 @@ export class UserService {
         return this.authService.register(createUserDto);
     }
 
-    findAll(): Promise<User[]> {
-        return this.userRepository.find();
+    async findAll(): Promise<User[]> {
+        return await this.userRepository.find();
     }
 
-    async findOne(id: string): Promise<User> {
-        const user = await this.userRepository.findOneBy({ id });
-        if (!user) {
-            throw new NotFoundException(`User with id ${id} not found`);
-        }
-        return user;
-    }
-
-    async findOneEmail(email: string): Promise<User> {
-        const user = await this.userRepository.findOneBy({ email });
-        if (!user) {
-            throw new NotFoundException(`User with email ${email} not found`);
-        }
-        return user;
+    async findOne(email: string): Promise<string> {
+        return this.authService.login(email);
     }
 
     async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
