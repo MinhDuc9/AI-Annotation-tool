@@ -18,7 +18,7 @@ import { JwtService } from "src/jwt/jwt.service";
                 secret: configService.get<string>("JWT_SECRET"),
                 signOptions: {
                     expiresIn:
-                        configService.get<string>("JWT_EXPIRES_IN") ?? "1h",
+                        configService.get<string>("JWT_EXPIRES_IN") ?? "24h",
                 },
             }),
         }),

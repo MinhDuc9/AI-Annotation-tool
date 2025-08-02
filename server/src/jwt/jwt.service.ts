@@ -17,7 +17,17 @@ export class JwtService {
     createJWT(payload: JwtPayload): string {
         const secret = this.config.get<string>("JWT_SECRET");
         // optional: read an expiresIn too (you could add JWT_EXPIRES_IN to .env)
-        const expiresIn = this.config.get<string>("JWT_EXPIRES_IN") ?? "1h";
+        /*
+            In your setup, there are two “layers” of configuration:
+            1.	Module-level defaults (in AuthModule’s JwtModule.registerAsync)
+            2.	Call-site overrides (in your JwtService.createJWT, where you do sign(payload, { secret, expiresIn }))
+
+            Nest’s JwtModule.registerAsync with signOptions: { expiresIn: "1h" }
+            only establishes the default expiration for the injected NestJwtService. 
+            But since wrapper always calls 
+            return this.jwtService.sign(payload);
+        */
+        const expiresIn = this.config.get<string>("JWT_EXPIRES_IN") ?? "24h";
         return this.jwtService.sign(payload, { secret, expiresIn });
     }
 

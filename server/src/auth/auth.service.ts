@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+    Injectable,
+    NotFoundException,
+    UnauthorizedException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { JwtService } from "src/jwt/jwt.service";
 import { User } from "src/user/entities/user.entity";
@@ -6,6 +10,7 @@ import { Repository } from "typeorm/repository/Repository";
 import { CreateUserDto } from "src/user/dto/create-user.dto";
 import { BadRequestException } from "@nestjs/common";
 import { QueryFailedError } from "typeorm";
+import { LoginUserDto } from "src/user/dto/login-user.dto";
 
 @Injectable()
 export class AuthService {
@@ -49,11 +54,16 @@ export class AuthService {
         }
     }
 
-    async login(email: string): Promise<string> {
+    async login(loginUserDto: LoginUserDto): Promise<string> {
+        const { email, password } = loginUserDto;
         const user = await this.userRepository.findOneBy({ email });
 
         if (!user) {
             throw new NotFoundException(`User with email ${email} not found`);
+        }
+
+        if (user.password !== password) {
+            throw new UnauthorizedException("Wrong password!");
         }
 
         const token = this.jwtService.createJWT({

@@ -3,6 +3,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
+import { LoginUserDto } from "./dto/login-user.dto";
 import { User } from "./entities/user.entity";
 import { AuthService } from "src/auth/auth.service";
 import { REQUEST } from "@nestjs/core";
@@ -14,8 +15,11 @@ export class UserService {
     constructor(
         @InjectRepository(User)
         private readonly userRepository: Repository<User>,
+
         private readonly authService: AuthService,
-        @Inject(REQUEST) private readonly request: Request,
+
+        @Inject(REQUEST)
+        private readonly request: Request,
     ) {}
 
     async create(
@@ -30,8 +34,8 @@ export class UserService {
         });
     }
 
-    async findOne(email: string): Promise<string> {
-        return this.authService.login(email);
+    async findOne(loginUserDto: LoginUserDto): Promise<string> {
+        return this.authService.login(loginUserDto);
     }
 
     async update(updateUserDto: UpdateUserDto): Promise<User> {

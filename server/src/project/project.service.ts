@@ -1,24 +1,29 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, Inject, Scope } from "@nestjs/common";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Project } from "./entities/project.entity";
 import { Repository } from "typeorm";
 import { User } from "src/user/entities/user.entity";
+import { REQUEST } from "@nestjs/core";
+import { Request } from "express";
+import { JwtPayload } from "../jwt/jwt-payload.interface";
 
-@Injectable()
+@Injectable({ scope: Scope.REQUEST })
 export class ProjectService {
     constructor(
         @InjectRepository(Project)
         private readonly projectRepository: Repository<Project>,
+
         @InjectRepository(User)
         private readonly userRepository: Repository<User>,
+
+        @Inject(REQUEST)
+        private readonly request: Request,
     ) {}
 
-    async create(
-        createProjectDto: CreateProjectDto,
-        user_id: string,
-    ): Promise<Project> {
+    async create(createProjectDto: CreateProjectDto): Promise<Project> {
+        const user_id: string = (this.request.user as JwtPayload).id;
         const project = new Project();
         project.project_name = createProjectDto.project_name;
 
@@ -34,13 +39,14 @@ export class ProjectService {
         return savedProject;
     }
 
-    async findAll(user_id: string): Promise<
+    async findAll(): Promise<
         {
             project_id: string;
             project_name: string;
             role: "admin" | "writer" | "read";
         }[]
     > {
+        const user_id: string = (this.request.user as JwtPayload).id;
         const projects = await this.projectRepository
             .createQueryBuilder("project")
             .leftJoinAndSelect("project.admins", "admin")
