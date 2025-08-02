@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -68,8 +68,35 @@ export class ProjectService {
         });
     }
 
-    // TODO: addUser, removeUser, updateRole ...
-    // addUser(project_id: string, user_id: string) {}
+    async addWriteUser(
+        project_id: string,
+        user_email: string,
+    ): Promise<Project> {
+        const project = await this.projectRepository.findOne({
+            where: { id: project_id },
+            relations: ["admins", "writeUsers"],
+        });
+
+        const user = await this.userRepository.findOneOrFail({
+            where: { email: user_email },
+        });
+
+        if (!project) {
+            throw new NotFoundException(`${project_id} not found`);
+        }
+
+        if (!user) {
+            throw new NotFoundException(`${user_email} email not found`);
+        }
+
+        if (!project.writeUsers.some((u) => u.id === user.id)) {
+            project.writeUsers.push(user);
+        }
+
+        const saved = await this.projectRepository.save(project);
+
+        return saved;
+    }
 
     findOne(id: number) {
         return `This action returns a #${id} project`;

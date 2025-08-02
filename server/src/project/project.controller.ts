@@ -28,6 +28,14 @@ export class ProjectController {
         return this.projectService.findAll(user_id);
     }
 
+    @Patch("add_write_user/:user_email/:project_id")
+    addWriteUser(
+        @Param("user_email") user_email: string,
+        @Param("project_id") project_id: string,
+    ) {
+        return this.projectService.addWriteUser(project_id, user_email);
+    }
+
     @Get(":id")
     findOne(@Param("id") id: string) {
         return this.projectService.findOne(+id);
