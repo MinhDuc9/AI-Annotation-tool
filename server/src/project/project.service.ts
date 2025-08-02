@@ -104,6 +104,36 @@ export class ProjectService {
         return saved;
     }
 
+    async addReadUser(
+        project_id: string,
+        user_email: string,
+    ): Promise<Project> {
+        const project = await this.projectRepository.findOne({
+            where: { id: project_id },
+            relations: ["admins", "readUsers"],
+        });
+
+        const user = await this.userRepository.findOneOrFail({
+            where: { email: user_email },
+        });
+
+        if (!project) {
+            throw new NotFoundException(`${project_id} not found`);
+        }
+
+        if (!user) {
+            throw new NotFoundException(`${user_email} email not found`);
+        }
+
+        if (!project.readUsers.some((u) => u.id === user.id)) {
+            project.readUsers.push(user);
+        }
+
+        const saved = await this.projectRepository.save(project);
+
+        return saved;
+    }
+
     async findOneWithAdmins(project_id: string): Promise<Project> {
         const project = await this.projectRepository.findOne({
             where: { id: project_id },

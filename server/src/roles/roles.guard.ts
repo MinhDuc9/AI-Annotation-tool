@@ -10,7 +10,7 @@ import { JwtPayload } from "src/jwt/jwt-payload.interface";
 import { Request } from "express";
 
 @Injectable()
-export class AdminsGuard implements CanActivate {
+export class RolesGuard implements CanActivate {
     constructor(
         private reflector: Reflector,
         private projectService: ProjectService,

@@ -11,11 +11,11 @@ import {
 import { ProjectService } from "./project.service";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
-import { AdminsGuard } from "src/roles/admins.guard";
+import { RolesGuard } from "src/roles/roles.guard";
 import { Roles } from "src/roles/roles.decorator";
 
 @Controller("project")
-@UseGuards(AdminsGuard)
+@UseGuards(RolesGuard)
 export class ProjectController {
     constructor(private readonly projectService: ProjectService) {}
 
@@ -38,6 +38,15 @@ export class ProjectController {
         return this.projectService.addWriteUser(project_id, user_email);
     }
 
+    @Patch("add_read_user/:user_email/:project_id")
+    @Roles("admin")
+    addReadUser(
+        @Param("user_email") user_email: string,
+        @Param("project_id") project_id: string,
+    ) {
+        return this.projectService.addReadUser(project_id, user_email);
+    }
+
     @Get(":project_id")
     findOneWithAdmins(@Param("project_id") project_id: string) {
         return this.projectService.findOneWithAdmins(project_id);
@@ -52,6 +61,7 @@ export class ProjectController {
     }
 
     @Delete(":id")
+    @Roles("admin")
     remove(@Param("id") id: string) {
         return this.projectService.remove(+id);
     }
