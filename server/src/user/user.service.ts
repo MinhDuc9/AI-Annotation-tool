@@ -8,12 +8,14 @@ import { Repository, QueryFailedError } from "typeorm";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { User } from "./entities/user.entity";
+import { JwtService } from "src/jwt/jwt.service";
 
 @Injectable()
 export class UserService {
     constructor(
         @InjectRepository(User)
         private readonly userRepository: Repository<User>,
+        private readonly jwtService: JwtService,
     ) {}
 
     async create(createUserDto: CreateUserDto) {
@@ -23,7 +25,13 @@ export class UserService {
         user.password = createUserDto.password;
 
         try {
-            return await this.userRepository.save(user);
+            const savedUser = await this.userRepository.save(user);
+            const token = this.jwtService.createJWT({
+                id: savedUser.id,
+                email: savedUser.email,
+            });
+
+            return { user: savedUser, token };
         } catch (error: unknown) {
             if (error instanceof QueryFailedError) {
                 const driverError = error.driverError as {
