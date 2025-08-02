@@ -2,16 +2,15 @@ import { Module } from "@nestjs/common";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { config } from "dotenv";
+import { ConfigModule } from "@nestjs/config";
 import { UserModule } from "./user/user.module";
 import { User } from "./user/entities/user.entity";
 import { ProjectModule } from "./project/project.module";
 import { Project } from "./project/entities/project.entity";
 
-config();
-
 @Module({
     imports: [
+        ConfigModule.forRoot({ isGlobal: true }),
         TypeOrmModule.forRoot({
             type: "postgres",
             host: process.env.HOST,

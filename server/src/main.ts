@@ -2,9 +2,7 @@ import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
-import { config } from "dotenv";
-
-config();
+import { ConfigService } from "@nestjs/config";
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
@@ -15,7 +13,10 @@ async function bootstrap() {
             transform: true, // auto-transform payloads to DTO instances
         }),
     );
-    await app.listen(process.env.PORT ?? 3000);
+
+    const configService = app.get(ConfigService);
+    const port = configService.get<number>("PORT") ?? 3000;
+    await app.listen(port);
 }
 
 bootstrap().catch((err) => {
