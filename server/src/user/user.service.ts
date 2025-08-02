@@ -8,22 +8,28 @@ import { Repository, QueryFailedError } from "typeorm";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { User } from "./entities/user.entity";
+import { AuthService } from "../services/auth/auth.service";
 
 @Injectable()
 export class UserService {
     constructor(
         @InjectRepository(User)
         private readonly userRepository: Repository<User>,
+        private readonly authService: AuthService,
     ) {}
 
-    async create(createUserDto: CreateUserDto) {
+    async create(
+        createUserDto: CreateUserDto,
+    ): Promise<{ user: User; token: string }> {
         const user: User = new User();
         user.email = createUserDto.email;
         user.username = createUserDto.username;
         user.password = createUserDto.password;
 
         try {
-            return await this.userRepository.save(user);
+            const savedUser = await this.userRepository.save(user);
+            const token = this.authService.createToken(savedUser.id);
+            return { user: savedUser, token };
         } catch (error: unknown) {
             if (error instanceof QueryFailedError) {
                 const driverError = error.driverError as {
