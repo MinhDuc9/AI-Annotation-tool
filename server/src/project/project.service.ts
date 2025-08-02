@@ -104,8 +104,17 @@ export class ProjectService {
         return saved;
     }
 
-    findOne(id: number) {
-        return `This action returns a #${id} project`;
+    async findOneWithAdmins(project_id: string): Promise<Project> {
+        const project = await this.projectRepository.findOne({
+            where: { id: project_id },
+            relations: ["admins"],
+        });
+
+        if (!project) {
+            throw new NotFoundException(`Project ${project_id} not found`);
+        }
+
+        return project;
     }
 
     update(id: number, updateProjectDto: UpdateProjectDto) {
