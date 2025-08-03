@@ -1,15 +1,6 @@
-import {
-    Controller,
-    Get,
-    Post,
-    Body,
-    Patch,
-    Param,
-    Delete,
-} from "@nestjs/common";
+import { Controller, Get, Post, Body, Param } from "@nestjs/common";
 import { ProjectUserRoleService } from "./project-user-role.service";
 import { CreateProjectUserRoleDto } from "./dto/create-project-user-role.dto";
-import { UpdateProjectUserRoleDto } from "./dto/update-project-user-role.dto";
 
 @Controller("project-user-role")
 export class ProjectUserRoleController {
@@ -30,18 +21,5 @@ export class ProjectUserRoleController {
     @Get(":id")
     findOne(@Param("id") id: string) {
         return this.projectUserRoleService.findOne(id);
-    }
-
-    @Patch(":id")
-    update(
-        @Param("id") id: string,
-        @Body() updateProjectUserRoleDto: UpdateProjectUserRoleDto,
-    ) {
-        return this.projectUserRoleService.update(id, updateProjectUserRoleDto);
-    }
-
-    @Delete(":id")
-    remove(@Param("id") id: string) {
-        return this.projectUserRoleService.remove(id);
     }
 }

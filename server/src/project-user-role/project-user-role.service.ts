@@ -2,7 +2,6 @@ import { Inject, Injectable, Scope } from "@nestjs/common";
 import { REQUEST } from "@nestjs/core";
 import { Request } from "express";
 import { CreateProjectUserRoleDto } from "./dto/create-project-user-role.dto";
-import { UpdateProjectUserRoleDto } from "./dto/update-project-user-role.dto";
 import { ProjectUserRole } from "./entities/project-user-role.entity";
 import { Project } from "src/project/entities/project.entity";
 import { User } from "src/user/entities/user.entity";
@@ -60,13 +59,5 @@ export class ProjectUserRoleService {
 
     findOne(id: string) {
         return `This action returns a #${id} projectUserRole`;
-    }
-
-    update(id: string, updateProjectUserRoleDto: UpdateProjectUserRoleDto) {
-        return `This action updates a #${id} projectUserRole`;
-    }
-
-    remove(id: string) {
-        return `This action removes a #${id} projectUserRole`;
     }
 }
