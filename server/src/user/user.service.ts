@@ -34,7 +34,7 @@ export class UserService {
         });
     }
 
-    async findOne(loginUserDto: LoginUserDto): Promise<string> {
+    async login(loginUserDto: LoginUserDto): Promise<string> {
         return this.authService.login(loginUserDto);
     }
 

@@ -23,7 +23,7 @@ export class UserController {
     @Get("login")
     @Public()
     findOne(@Body() loginUserDto: LoginUserDto) {
-        return this.userService.findOne(loginUserDto);
+        return this.userService.login(loginUserDto);
     }
 
     @Patch()
