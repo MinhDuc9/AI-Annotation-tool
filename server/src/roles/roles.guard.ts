@@ -5,15 +5,15 @@ import {
     ForbiddenException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { ProjectService } from "../project/project.service";
 import { JwtPayload } from "src/jwt/jwt-payload.interface";
 import { Request } from "express";
+import { ProjectUserRoleService } from "src/project-user-role/project-user-role.service";
 
 @Injectable()
 export class RolesGuard implements CanActivate {
     constructor(
         private reflector: Reflector,
-        private projectService: ProjectService,
+        private projectUserRoleService: ProjectUserRoleService,
     ) {}
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -29,24 +29,22 @@ export class RolesGuard implements CanActivate {
         if (!requiredRoles) {
             return true;
         }
-
-        const request = context
-            .switchToHttp()
-            .getRequest<Request & { user: JwtPayload }>();
+        const request = context.switchToHttp().getRequest<Request>();
         const user = request.user as JwtPayload;
-        const projectId = request.params.project_id;
+        const projectId: string = request.params.project_id;
 
-        if (requiredRoles.includes("admin")) {
-            const project =
-                await this.projectService.findOneWithAdmins(projectId);
-            if (!project.admins.some((u) => u.id === user.id)) {
-                throw new ForbiddenException(
-                    "Only project admins can perform this",
-                );
-            }
-            return true;
+        // Fetch this user's role entries for the project
+        const roles = await this.projectUserRoleService.findByProjectAndUser(
+            projectId,
+            user.id,
+        );
+        // Ensure at least one matches the allowed roles
+        if (!roles.some((r) => requiredRoles.includes(r.role))) {
+            throw new ForbiddenException(
+                `Requires one of roles: ${requiredRoles.join(", ")}`,
+            );
         }
 
-        return false;
+        return true;
     }
 }

@@ -32,24 +32,19 @@ export class ProjectController {
     @Patch("add_write_user/:user_email/:project_id")
     @Roles("admin")
     addWriteUser(
-        @Param("user_email") user_email: string,
+        @Param("user_email") userEmail: string,
         @Param("project_id") project_id: string,
     ) {
-        return this.projectService.addWriteUser(project_id, user_email);
+        return this.projectService.addWriteUser(project_id, userEmail);
     }
 
     @Patch("add_read_user/:user_email/:project_id")
-    @Roles("admin")
+    @Roles("admin", "write")
     addReadUser(
         @Param("user_email") user_email: string,
         @Param("project_id") project_id: string,
     ) {
         return this.projectService.addReadUser(project_id, user_email);
-    }
-
-    @Get(":project_id")
-    findOneWithAdmins(@Param("project_id") project_id: string) {
-        return this.projectService.findOneWithAdmins(project_id);
     }
 
     @Patch(":id")

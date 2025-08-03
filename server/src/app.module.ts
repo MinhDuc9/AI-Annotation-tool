@@ -10,6 +10,8 @@ import { Project } from "./project/entities/project.entity";
 import { AuthModule } from "./auth/auth.module";
 import { APP_GUARD } from "@nestjs/core";
 import { JwtAuthGuard } from "./jwt/jwt-auth.guard";
+import { ProjectUserRole } from "./project-user-role/entities/project-user-role.entity";
+import { ProjectUserRoleModule } from "./project-user-role/project-user-role.module";
 
 @Module({
     imports: [
@@ -19,13 +21,14 @@ import { JwtAuthGuard } from "./jwt/jwt-auth.guard";
             host: process.env.HOST,
             port: Number(process.env.SQL_PORT),
             username: process.env.USERNAME,
-            entities: [User, Project],
+            entities: [User, Project, ProjectUserRole],
             database: process.env.DATABASE,
             synchronize: true,
             logging: true,
         }),
         UserModule,
         ProjectModule,
+        ProjectUserRoleModule,
         AuthModule,
     ],
     controllers: [AppController],

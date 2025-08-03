@@ -1,5 +1,5 @@
-import { Project } from "src/project/entities/project.entity";
-import { Entity, Column, PrimaryGeneratedColumn, ManyToMany } from "typeorm";
+import { ProjectUserRole } from "src/project-user-role/entities/project-user-role.entity";
+import { Entity, Column, PrimaryGeneratedColumn, OneToMany } from "typeorm";
 
 @Entity()
 export class User {
@@ -15,12 +15,8 @@ export class User {
     @Column({ type: "varchar" })
     password: string;
 
-    @ManyToMany(() => Project, (project) => project.admins)
-    adminProjects: Project[];
-
-    @ManyToMany(() => Project, (project) => project.readUsers)
-    readProjects: Project[];
-
-    @ManyToMany(() => Project, (project) => project.writeUsers)
-    writeProjects: Project[];
+    @OneToMany(() => ProjectUserRole, (userRole) => userRole.user, {
+        cascade: true, // When saving user, automatically save related project roles
+    })
+    projectRoles: ProjectUserRole[];
 }

@@ -8,6 +8,7 @@ import { User } from "src/user/entities/user.entity";
 import { REQUEST } from "@nestjs/core";
 import { Request } from "express";
 import { JwtPayload } from "../jwt/jwt-payload.interface";
+import { ProjectUserRole } from "src/project-user-role/entities/project-user-role.entity";
 
 @Injectable({ scope: Scope.REQUEST })
 export class ProjectService {
@@ -23,128 +24,114 @@ export class ProjectService {
     ) {}
 
     async create(createProjectDto: CreateProjectDto): Promise<Project> {
-        const user_id: string = (this.request.user as JwtPayload).id;
-        const project = new Project();
-        project.project_name = createProjectDto.project_name;
-
+        const userId = (this.request.user as JwtPayload).id;
         const user = await this.userRepository.findOneOrFail({
-            where: { id: user_id },
-            relations: ["adminProjects"],
+            where: { id: userId },
         });
 
-        project.admins = [user];
+        const project = new Project();
+        project.projectName = createProjectDto.project_name;
 
-        const savedProject = await this.projectRepository.save(project);
+        // assign initial admin role
+        const adminRole = new ProjectUserRole();
+        adminRole.user = user;
+        adminRole.role = "admin";
+        adminRole.project = project;
 
-        return savedProject;
+        project.userRoles = [adminRole];
+
+        return await this.projectRepository.save(project);
     }
 
     async findAll(): Promise<
         {
             project_id: string;
             project_name: string;
-            role: "admin" | "writer" | "read";
+            role: "admin" | "write" | "read";
         }[]
     > {
-        const user_id: string = (this.request.user as JwtPayload).id;
+        const userId = (this.request.user as JwtPayload).id;
         const projects = await this.projectRepository
             .createQueryBuilder("project")
-            .leftJoinAndSelect("project.admins", "admin")
-            .leftJoinAndSelect("project.readUsers", "readUser")
-            .leftJoinAndSelect("project.writeUsers", "writeUser")
-            .where("admin.id = :user_id", { user_id })
-            .orWhere("readUser.id = :user_id", { user_id })
-            .orWhere("writeUser.id = :user_id", { user_id })
+            .innerJoinAndSelect(
+                "project.userRoles",
+                "userRole",
+                "userRole.userId = :userId",
+                { userId },
+            )
             .getMany();
 
-        return projects.map((project) => {
-            let role: "admin" | "writer" | "read";
-            if (project.admins.some((u) => u.id === user_id)) {
-                role = "admin";
-            } else if (project.writeUsers.some((u) => u.id === user_id)) {
-                role = "writer";
-            } else {
-                role = "read";
+        return projects.map((project) => ({
+            project_id: project.id,
+            project_name: project.projectName,
+            role: project.userRoles[0].role,
+        }));
+    }
+
+    async addWriteUser(projectId: string, userEmail: string): Promise<Project> {
+        const project = await this.projectRepository.findOne({
+            where: { id: projectId },
+            relations: ["userRoles"],
+        });
+
+        if (!project) {
+            throw new NotFoundException(`Project ${projectId} not found`);
+        }
+
+        const user = await this.userRepository.findOneOrFail({
+            where: { email: userEmail },
+        });
+
+        // Check for existing role
+        const existingRole = project.userRoles.find(
+            (ur) => ur.userId === user.id,
+        );
+        if (existingRole) {
+            if (existingRole.role === "write") {
+                return project;
             }
-            return {
-                project_id: project.id,
-                project_name: project.project_name,
-                role,
-            };
-        });
+            // Upgrade role
+            existingRole.role = "write";
+        } else {
+            const writeRole = new ProjectUserRole();
+            writeRole.user = user;
+            writeRole.role = "write";
+            writeRole.project = project;
+            project.userRoles.push(writeRole);
+        }
+
+        return await this.projectRepository.save(project);
     }
 
-    async addWriteUser(
-        project_id: string,
-        user_email: string,
-    ): Promise<Project> {
+    async addReadUser(projectId: string, userEmail: string): Promise<Project> {
+        // load current roles (with their user) for this project
         const project = await this.projectRepository.findOne({
-            where: { id: project_id },
-            relations: ["admins", "writeUsers"],
+            where: { id: projectId },
+            relations: ["userRoles"],
         });
+        if (!project) {
+            throw new NotFoundException(`Project ${projectId} not found`);
+        }
 
+        // look up the user
         const user = await this.userRepository.findOneOrFail({
-            where: { email: user_email },
+            where: { email: userEmail },
         });
 
-        if (!project) {
-            throw new NotFoundException(`${project_id} not found`);
+        // if they already have any role (admin/write/read), do nothing
+        const existing = project.userRoles.find((ur) => ur.userId === user.id);
+        if (existing) {
+            return project;
         }
 
-        if (!user) {
-            throw new NotFoundException(`${user_email} email not found`);
-        }
+        // otherwise, give them a read role
+        const readRole = new ProjectUserRole();
+        readRole.project = project;
+        readRole.user = user;
+        readRole.role = "read";
+        project.userRoles.push(readRole);
 
-        if (!project.writeUsers.some((u) => u.id === user.id)) {
-            project.writeUsers.push(user);
-        }
-
-        const saved = await this.projectRepository.save(project);
-
-        return saved;
-    }
-
-    async addReadUser(
-        project_id: string,
-        user_email: string,
-    ): Promise<Project> {
-        const project = await this.projectRepository.findOne({
-            where: { id: project_id },
-            relations: ["admins", "readUsers"],
-        });
-
-        const user = await this.userRepository.findOneOrFail({
-            where: { email: user_email },
-        });
-
-        if (!project) {
-            throw new NotFoundException(`${project_id} not found`);
-        }
-
-        if (!user) {
-            throw new NotFoundException(`${user_email} email not found`);
-        }
-
-        if (!project.readUsers.some((u) => u.id === user.id)) {
-            project.readUsers.push(user);
-        }
-
-        const saved = await this.projectRepository.save(project);
-
-        return saved;
-    }
-
-    async findOneWithAdmins(project_id: string): Promise<Project> {
-        const project = await this.projectRepository.findOne({
-            where: { id: project_id },
-            relations: ["admins"],
-        });
-
-        if (!project) {
-            throw new NotFoundException(`Project ${project_id} not found`);
-        }
-
-        return project;
+        return this.projectRepository.save(project);
     }
 
     update(id: number, updateProjectDto: UpdateProjectDto) {

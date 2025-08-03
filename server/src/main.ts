@@ -1,7 +1,8 @@
 import "reflect-metadata";
-import { ValidationPipe } from "@nestjs/common";
+import { ValidationPipe, ClassSerializerInterceptor } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
+import { Reflector } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
 
 async function bootstrap() {
@@ -13,6 +14,10 @@ async function bootstrap() {
             transform: true, // auto-transform payloads to DTO instances
         }),
     );
+
+    // Enable serialization interceptor to handle @Exclude and prevent circular JSON
+    const reflector = app.get(Reflector);
+    app.useGlobalInterceptors(new ClassSerializerInterceptor(reflector));
 
     const configService = app.get(ConfigService);
     const port = configService.get<number>("PORT") ?? 3000;
