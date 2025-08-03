@@ -47,17 +47,18 @@ export class ProjectController {
         return this.projectService.addReadUser(project_id, user_email);
     }
 
-    @Patch(":id")
+    @Patch(":project_id")
+    @Roles("admin", "write")
     update(
-        @Param("id") id: string,
+        @Param("project_id") project_id: string,
         @Body() updateProjectDto: UpdateProjectDto,
     ) {
-        return this.projectService.update(+id, updateProjectDto);
+        return this.projectService.update(project_id, updateProjectDto);
     }
 
-    @Delete(":id")
+    @Delete(":project_id")
     @Roles("admin")
-    remove(@Param("id") id: string) {
-        return this.projectService.remove(+id);
+    remove(@Param("project_id") project_id: string) {
+        return this.projectService.remove(project_id);
     }
 }

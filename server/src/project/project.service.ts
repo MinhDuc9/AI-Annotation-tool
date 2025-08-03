@@ -21,6 +21,9 @@ export class ProjectService {
 
         @Inject(REQUEST)
         private readonly request: Request,
+
+        @InjectRepository(ProjectUserRole)
+        private readonly projectUserRoleRepository: Repository<ProjectUserRole>,
     ) {}
 
     async create(createProjectDto: CreateProjectDto): Promise<Project> {
@@ -45,26 +48,28 @@ export class ProjectService {
 
     async findAll(): Promise<
         {
-            project_id: string;
-            project_name: string;
+            projectName: string;
+            id: string;
+            projectId: string;
+            userId: string;
             role: "admin" | "write" | "read";
         }[]
     > {
-        const userId = (this.request.user as JwtPayload).id;
-        const projects = await this.projectRepository
-            .createQueryBuilder("project")
-            .innerJoinAndSelect(
-                "project.userRoles",
-                "userRole",
-                "userRole.userId = :userId",
-                { userId },
-            )
-            .getMany();
+        const userId: string = (this.request.user as JwtPayload).id;
 
-        return projects.map((project) => ({
-            project_id: project.id,
-            project_name: project.projectName,
-            role: project.userRoles[0].role,
+        // load roles along with project relation
+        const roles = await this.projectUserRoleRepository.find({
+            where: { userId },
+            relations: ["project"],
+        });
+
+        // map to include projectName
+        return roles.map(({ id, projectId, userId, role, project }) => ({
+            projectName: project.projectName,
+            id,
+            projectId,
+            userId,
+            role,
         }));
     }
 
@@ -134,11 +139,37 @@ export class ProjectService {
         return this.projectRepository.save(project);
     }
 
-    update(id: number, updateProjectDto: UpdateProjectDto) {
-        return `This action updates a #${id} project`;
+    async update(projectId: string, updateProjectDto: UpdateProjectDto) {
+        const project = await this.projectRepository.findOneBy({
+            id: projectId,
+        });
+
+        if (!project) {
+            throw new NotFoundException("Project not found");
+        }
+
+        if (updateProjectDto.project_name !== undefined) {
+            project.projectName = updateProjectDto.project_name;
+        }
+
+        return this.projectRepository.save(project);
     }
 
-    remove(id: number) {
-        return `This action removes a #${id} project`;
+    async remove(projectId: string): Promise<void> {
+        const project = await this.projectRepository.findOne({
+            where: { id: projectId },
+            relations: ["userRoles"],
+        });
+
+        if (!project) {
+            throw new NotFoundException(`Project ${projectId} not found`);
+        }
+
+        // Remove all related roles first to satisfy FK constraints
+        if (project.userRoles?.length) {
+            await this.projectUserRoleRepository.remove(project.userRoles);
+        }
+
+        await this.projectRepository.remove(project);
     }
 }

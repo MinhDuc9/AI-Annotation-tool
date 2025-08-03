@@ -43,7 +43,7 @@ export class UserService {
         const user = await this.userRepository.findOneBy({ id });
 
         if (!user) {
-            throw new NotFoundException(`User not found`);
+            throw new NotFoundException("User not found");
         }
 
         if (updateUserDto.email !== undefined) {
@@ -66,10 +66,9 @@ export class UserService {
         const check = await this.userRepository.findOneBy({ id });
 
         if (!check) {
-            throw new NotFoundException(`User not found`);
+            throw new NotFoundException("User not found");
         }
 
         await this.userRepository.delete({ id });
-        return;
     }
 }
