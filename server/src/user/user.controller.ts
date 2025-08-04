@@ -20,7 +20,7 @@ export class UserController {
         return this.userService.findAll();
     }
 
-    @Get("login")
+    @Post("login")
     @Public()
     findOne(@Body() loginUserDto: LoginUserDto) {
         return this.userService.login(loginUserDto);

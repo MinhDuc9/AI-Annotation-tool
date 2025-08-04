@@ -23,7 +23,7 @@ import { ProjectUserRoleModule } from "./project-user-role/project-user-role.mod
                 type: "postgres",
                 host: config.get<string>("HOST"),
                 port: config.get<number>("SQL_PORT"),
-                username: config.get<string>("USERNAME"),
+                username: config.get<string>("USER_NAME"),
                 database: config.get<string>("DATABASE"),
                 entities: [User, Project, ProjectUserRole],
                 synchronize: true,
