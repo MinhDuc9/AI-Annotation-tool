@@ -2,7 +2,7 @@ import { Module } from "@nestjs/common";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { ConfigModule } from "@nestjs/config";
+import { ConfigModule, ConfigService } from "@nestjs/config";
 import { UserModule } from "./user/user.module";
 import { User } from "./user/entities/user.entity";
 import { ProjectModule } from "./project/project.module";
@@ -16,15 +16,19 @@ import { ProjectUserRoleModule } from "./project-user-role/project-user-role.mod
 @Module({
     imports: [
         ConfigModule.forRoot({ isGlobal: true }),
-        TypeOrmModule.forRoot({
-            type: "postgres",
-            host: process.env.HOST,
-            port: Number(process.env.SQL_PORT),
-            username: process.env.USERNAME,
-            entities: [User, Project, ProjectUserRole],
-            database: process.env.DATABASE,
-            synchronize: true,
-            logging: true,
+        TypeOrmModule.forRootAsync({
+            imports: [ConfigModule],
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => ({
+                type: "postgres",
+                host: config.get<string>("HOST"),
+                port: config.get<number>("SQL_PORT"),
+                username: config.get<string>("USERNAME"),
+                database: config.get<string>("DATABASE"),
+                entities: [User, Project, ProjectUserRole],
+                synchronize: true,
+                logging: true,
+            }),
         }),
         UserModule,
         ProjectModule,
