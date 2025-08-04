@@ -1,0 +1,45 @@
+<main class="main">
+    <div class="content">
+        <p class="title">Log In</p>
+        <p class="subtitle">Log in to your account</p>
+        <form>
+            <mat-form-field appearance="outline">
+            <mat-label>Email Address</mat-label>
+            <input
+                matInput
+                [formControl]="emailFormControl"
+                [errorStateMatcher]="matcher"
+                placeholder="Insert email"
+            />
+            @if (emailFormControl.hasError('email') &&
+            !emailFormControl.hasError('required')) {
+            <mat-error>Please enter a valid email address</mat-error>
+            } @if (emailFormControl.hasError('required')) {
+            <mat-error>Email is <strong>required</strong></mat-error>
+            }
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+            <mat-label>Password</mat-label>
+            <input matInput [type]="hide() ? 'password' : 'text'" [formControl]="passwordFormControl"
+                [errorStateMatcher]="matcher" placeholder="Insert password" />
+            <button
+                matIconButton
+                matSuffix
+                (click)="clickEvent($event)"
+                [attr.aria-label]="'Hide password'"
+                [attr.aria-pressed]="hide()"
+            >
+                <mat-icon>{{
+                    hide() ? "visibility_off" : "visibility"
+                }}</mat-icon>
+            </button>
+            @if (passwordFormControl.hasError('required')) {
+            <mat-error>Password is <strong>required</strong></mat-error>
+            }
+        </mat-form-field>
+
+        <button matButton="filled">Login</button>
+        </form>
+    </div>
+</main>
