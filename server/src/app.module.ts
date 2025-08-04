@@ -24,6 +24,7 @@ import { ProjectUserRoleModule } from "./project-user-role/project-user-role.mod
                 host: config.get<string>("HOST"),
                 port: config.get<number>("SQL_PORT"),
                 username: config.get<string>("USER_NAME"),
+                password: config.get<string>("DATABASE_PASS"),
                 database: config.get<string>("DATABASE"),
                 entities: [User, Project, ProjectUserRole],
                 synchronize: true,
