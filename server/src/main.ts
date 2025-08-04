@@ -20,7 +20,13 @@ async function bootstrap() {
     app.useGlobalInterceptors(new ClassSerializerInterceptor(reflector));
 
     const configService = app.get(ConfigService);
-    const port = configService.get<number>("PORT") ?? 3000;
+    app.enableCors({
+        origin:
+            configService.get<string>("CLIENT_PORT") ?? "http://localhost:4200",
+        methods: ["GET", "POST", "PATCH", "DELETE"],
+        credentials: true,
+    });
+    const port = configService.get<number>("PORT") ?? 8080;
     await app.listen(port);
 }
 
