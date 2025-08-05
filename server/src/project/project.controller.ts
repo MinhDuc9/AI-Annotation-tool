@@ -33,32 +33,32 @@ export class ProjectController {
     @Roles("admin")
     addWriteUser(
         @Param("user_email") userEmail: string,
-        @Param("project_id") project_id: string,
+        @Param("project_id") projectId: string,
     ) {
-        return this.projectService.addWriteUser(project_id, userEmail);
+        return this.projectService.addWriteUser(projectId, userEmail);
     }
 
     @Patch("add_read_user/:user_email/:project_id")
     @Roles("admin", "write")
     addReadUser(
-        @Param("user_email") user_email: string,
-        @Param("project_id") project_id: string,
+        @Param("user_email") userEmail: string,
+        @Param("project_id") projectId: string,
     ) {
-        return this.projectService.addReadUser(project_id, user_email);
+        return this.projectService.addReadUser(projectId, userEmail);
     }
 
     @Patch(":project_id")
     @Roles("admin", "write")
     update(
-        @Param("project_id") project_id: string,
+        @Param("project_id") projectId: string,
         @Body() updateProjectDto: UpdateProjectDto,
     ) {
-        return this.projectService.update(project_id, updateProjectDto);
+        return this.projectService.update(projectId, updateProjectDto);
     }
 
     @Delete(":project_id")
     @Roles("admin")
-    remove(@Param("project_id") project_id: string) {
-        return this.projectService.remove(project_id);
+    remove(@Param("project_id") projectId: string) {
+        return this.projectService.remove(projectId);
     }
 }
