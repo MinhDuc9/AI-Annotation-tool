@@ -15,7 +15,7 @@ export class CreateUserDto {
     @IsAlphanumeric("en-US", {
         message: "Username may only contain letters and numbers.",
     })
-    username: string;
+    userName: string;
 
     @IsNotEmpty()
     @IsEmail({}, { message: "Please provide a valid email address." })

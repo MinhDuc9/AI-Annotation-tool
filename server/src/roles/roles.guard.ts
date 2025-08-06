@@ -31,7 +31,7 @@ export class RolesGuard implements CanActivate {
         }
         const request = context.switchToHttp().getRequest<Request>();
         const user = request.user as JwtPayload;
-        const projectId: string = request.params.project_id;
+        const projectId: string = request.params.projectId;
 
         // Fetch this user's role entries for the project
         const roles = await this.projectUserRoleService.findByProjectAndUser(

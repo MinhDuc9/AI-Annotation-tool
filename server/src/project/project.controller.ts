@@ -48,7 +48,7 @@ export class ProjectController {
     }
 
     @Patch(":project_id")
-    @Roles("admin", "write")
+    @Roles("admin")
     update(
         @Param("project_id") projectId: string,
         @Body() updateProjectDto: UpdateProjectDto,

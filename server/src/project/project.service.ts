@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, Inject, Scope } from "@nestjs/common";
+import {
+    Injectable,
+    NotFoundException,
+    Inject,
+    Scope,
+    ConflictException,
+} from "@nestjs/common";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -33,7 +39,7 @@ export class ProjectService {
         });
 
         const project = new Project();
-        project.projectName = createProjectDto.project_name;
+        project.projectName = createProjectDto.projectName;
 
         // assign initial admin role
         const adminRole = new ProjectUserRole();
@@ -126,7 +132,9 @@ export class ProjectService {
         // if they already have any role (admin/write/read), do nothing
         const existing = project.userRoles.find((ur) => ur.userId === user.id);
         if (existing) {
-            return project;
+            throw new ConflictException(
+                `User ${userEmail} already has a role on this project`,
+            );
         }
 
         // otherwise, give them a read role
@@ -139,19 +147,73 @@ export class ProjectService {
         return this.projectRepository.save(project);
     }
 
-    async update(projectId: string, updateProjectDto: UpdateProjectDto) {
-        const project = await this.projectRepository.findOneBy({
-            id: projectId,
+    async update(
+        projectId: string,
+        updateProjectDto: UpdateProjectDto,
+    ): Promise<Project> {
+        const project = await this.projectRepository.findOne({
+            where: { id: projectId },
+            relations: ["userRoles"],
         });
 
         if (!project) {
             throw new NotFoundException("Project not found");
         }
 
-        if (updateProjectDto.project_name !== undefined) {
-            project.projectName = updateProjectDto.project_name;
+        if (updateProjectDto.projectName !== undefined) {
+            project.projectName = updateProjectDto.projectName;
         }
 
+        // Update user roles if provided
+        if (updateProjectDto.userRoles) {
+            // Build desired user-role map
+            const desiredMap = new Map<
+                string,
+                { user: User; role: "admin" | "write" | "read" }
+            >();
+            for (const urDto of updateProjectDto.userRoles) {
+                const user = await this.userRepository.findOneOrFail({
+                    where: { email: urDto.userEmail },
+                });
+                desiredMap.set(user.id, { user, role: urDto.role });
+            }
+
+            // Remove roles not in desired list
+            const existingRoles = project.userRoles;
+            const rolesToRemove = existingRoles.filter(
+                (er) => !desiredMap.has(er.userId),
+            );
+            if (rolesToRemove.length > 0) {
+                await this.projectUserRoleRepository.remove(rolesToRemove);
+            }
+
+            // Update existing roles and remove them from the desired map
+            for (const er of existingRoles) {
+                const desired = desiredMap.get(er.userId);
+                if (desired) {
+                    if (er.role !== desired.role) {
+                        er.role = desired.role;
+                        await this.projectUserRoleRepository.save(er);
+                    }
+                    desiredMap.delete(er.userId);
+                }
+            }
+
+            // Add new roles for remaining entries in desiredMap
+            const rolesToAdd: ProjectUserRole[] = [];
+            for (const { user, role } of desiredMap.values()) {
+                const pr = new ProjectUserRole();
+                pr.project = project;
+                pr.user = user;
+                pr.role = role;
+                rolesToAdd.push(pr);
+            }
+            if (rolesToAdd.length > 0) {
+                await this.projectUserRoleRepository.save(rolesToAdd);
+            }
+        }
+
+        // Persist project changes (name and cascaded roles)
         return this.projectRepository.save(project);
     }
 

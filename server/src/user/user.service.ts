@@ -30,7 +30,7 @@ export class UserService {
 
     async findAll(): Promise<User[]> {
         return await this.userRepository.find({
-            select: ["email", "username"],
+            select: ["email", "userName"],
         });
     }
 
@@ -54,8 +54,8 @@ export class UserService {
             user.password = updateUserDto.password;
         }
 
-        if (updateUserDto.username !== undefined) {
-            user.username = updateUserDto.username;
+        if (updateUserDto.userName !== undefined) {
+            user.userName = updateUserDto.userName;
         }
 
         return this.userRepository.save(user);

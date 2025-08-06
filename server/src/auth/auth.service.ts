@@ -25,7 +25,7 @@ export class AuthService {
     ): Promise<{ user: User; token: string }> {
         const user: User = new User();
         user.email = createUserDto.email;
-        user.username = createUserDto.username;
+        user.userName = createUserDto.userName;
         user.password = createUserDto.password;
 
         try {
