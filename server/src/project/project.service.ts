@@ -4,6 +4,7 @@ import {
     Inject,
     Scope,
     ConflictException,
+    ForbiddenException,
 } from "@nestjs/common";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
@@ -79,15 +80,32 @@ export class ProjectService {
         }));
     }
 
-    async addWriteUser(projectId: string, userEmail: string): Promise<Project> {
+    private async ensureUserOwnsProject(projectId: string): Promise<Project> {
         const project = await this.projectRepository.findOne({
             where: { id: projectId },
             relations: ["userRoles"],
         });
 
         if (!project) {
-            throw new NotFoundException(`Project ${projectId} not found`);
+            throw new NotFoundException("Project Not Found");
         }
+
+        const currentUserId: string = (this.request.user as JwtPayload).id;
+        const isMember: boolean = project.userRoles.some(
+            (ur) => ur.userId == currentUserId,
+        );
+
+        if (!isMember) {
+            throw new ForbiddenException(
+                "You are not a member of this project",
+            );
+        }
+
+        return project;
+    }
+
+    async addWriteUser(projectId: string, userEmail: string): Promise<Project> {
+        const project = await this.ensureUserOwnsProject(projectId);
 
         const user = await this.userRepository.findOneOrFail({
             where: { email: userEmail },
@@ -115,14 +133,7 @@ export class ProjectService {
     }
 
     async addReadUser(projectId: string, userEmail: string): Promise<Project> {
-        // load current roles (with their user) for this project
-        const project = await this.projectRepository.findOne({
-            where: { id: projectId },
-            relations: ["userRoles"],
-        });
-        if (!project) {
-            throw new NotFoundException(`Project ${projectId} not found`);
-        }
+        const project = await this.ensureUserOwnsProject(projectId);
 
         // look up the user
         const user = await this.userRepository.findOneOrFail({
@@ -151,14 +162,7 @@ export class ProjectService {
         projectId: string,
         updateProjectDto: UpdateProjectDto,
     ): Promise<Project> {
-        const project = await this.projectRepository.findOne({
-            where: { id: projectId },
-            relations: ["userRoles"],
-        });
-
-        if (!project) {
-            throw new NotFoundException("Project not found");
-        }
+        const project = await this.ensureUserOwnsProject(projectId);
 
         if (updateProjectDto.projectName !== undefined) {
             project.projectName = updateProjectDto.projectName;
