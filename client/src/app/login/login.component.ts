@@ -1,10 +1,12 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
-import { FormControl, FormGroupDirective, NgForm, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { FormControl, FormGroup, FormGroupDirective, NgForm, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { ErrorStateMatcher } from '@angular/material/core';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { Router } from '@angular/router';
+import { AuthService } from '../services/Auth.service';
 
 
 export class MyErrorStateMatcher implements ErrorStateMatcher {
@@ -22,8 +24,16 @@ export class MyErrorStateMatcher implements ErrorStateMatcher {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LoginComponent { 
-  emailFormControl = new FormControl('', [Validators.required, Validators.email]);
-  passwordFormControl = new FormControl('', [Validators.required]);
+  router = inject(Router)
+  authService = inject(AuthService)
+  loginError = signal(false)
+
+  loginForm = new FormGroup({
+    email: new FormControl('', [Validators.required, Validators.email]),
+    password: new FormControl('', [Validators.required])
+  })
+
+  matcher = new MyErrorStateMatcher();
 
   hide = signal(true);
   clickEvent(event: MouseEvent) {
@@ -31,5 +41,22 @@ export class LoginComponent {
     event.stopPropagation();
   }
 
-  matcher = new MyErrorStateMatcher();
+  email(){
+    return this.loginForm.get('email');
+  }
+
+  password(){
+    return this.loginForm.get('password');
+  }
+
+  onSubmit() {
+    this.authService.login(this.email()?.value!, this.password()?.value!).subscribe(token => {
+      console.log(token)
+      sessionStorage.setItem('email', this.email()?.value!);
+      sessionStorage.setItem('token', token);
+      this.router.navigate(['/']);
+    })
+  }
+
+  
 }
