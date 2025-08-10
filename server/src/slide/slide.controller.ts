@@ -7,11 +7,14 @@ import {
     Param,
     Delete,
     UseGuards,
+    UseInterceptors,
+    UploadedFile,
 } from "@nestjs/common";
 import { SlideService } from "./slide.service";
 import { UpdateSlideDto } from "./dto/update-slide.dto";
 import { RolesGuard } from "src/roles/roles.guard";
 import { Roles } from "src/roles/roles.decorator";
+import { FileInterceptor } from "@nestjs/platform-express";
 
 @Controller("slide")
 @UseGuards(RolesGuard)
@@ -34,9 +37,17 @@ export class SlideController {
         return this.slideService.findOne(+id);
     }
 
-    @Patch(":id")
-    update(@Param("id") id: string, @Body() updateSlideDto: UpdateSlideDto) {
-        return this.slideService.update(+id, updateSlideDto);
+    @Patch(":project_id/:slide_id")
+    @UseInterceptors(FileInterceptor("image"))
+    @Roles("admin", "write")
+    update(
+        @Param("project_id") _,
+        @Param("slide_id")
+        id: string,
+        @UploadedFile() file: unknown,
+        @Body() dto: UpdateSlideDto,
+    ) {
+        return this.slideService.update(id, dto, file);
     }
 
     @Delete(":id")
