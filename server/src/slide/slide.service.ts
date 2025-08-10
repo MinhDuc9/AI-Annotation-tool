@@ -1,20 +1,15 @@
 import {
     BadRequestException,
-    Inject,
     Injectable,
     NotFoundException,
-    Scope,
 } from "@nestjs/common";
 import * as path from "path";
 import { promises as fs } from "fs";
-import { REQUEST } from "@nestjs/core";
 import { UpdateSlideDto } from "./dto/update-slide.dto";
 import { Slide } from "./entities/slide.entity";
 import { ProjectService } from "src/project/project.service";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { Project } from "src/project/entities/project.entity";
-import { Request } from "express";
 
 // Minimal shape we need from a Multer file to avoid ambient type dependency
 interface MulterLikeFile {
@@ -32,17 +27,11 @@ function isMulterFile(file: unknown): file is MulterLikeFile {
     return typeof orig === "string" && buf instanceof Buffer;
 }
 
-@Injectable({ scope: Scope.REQUEST })
+@Injectable()
 export class SlideService {
     constructor(
-        @Inject(REQUEST)
-        private readonly request: Request,
-
         @InjectRepository(Slide)
         private readonly slideRepository: Repository<Slide>,
-
-        @InjectRepository(Project)
-        private readonly projectRepository: Repository<Project>,
 
         private readonly projectService: ProjectService,
     ) {}
