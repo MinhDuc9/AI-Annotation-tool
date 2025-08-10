@@ -16,19 +16,20 @@ import { Repository } from "typeorm";
 import { Project } from "src/project/entities/project.entity";
 import { Request } from "express";
 
-// Minimal shape we require from an uploaded file
-interface UploadedImageLike {
-    buffer: Buffer;
+// Minimal shape we need from a Multer file to avoid ambient type dependency
+interface MulterLikeFile {
     originalname: string;
+    buffer: Buffer;
 }
 
-function isUploadedImage(f: unknown): f is UploadedImageLike {
-    if (typeof f !== "object" || f === null) return false;
-    const rec = f as Record<string, unknown>;
-    const nameOk = typeof rec["originalname"] === "string";
-    const buf = rec["buffer"];
-    const bufOk = typeof buf !== "undefined" && buf instanceof Buffer;
-    return nameOk && bufOk;
+// Runtime type guard to safely narrow unknown/any to MulterLikeFile
+function isMulterFile(file: unknown): file is MulterLikeFile {
+    if (typeof file !== "object" || file === null) return false;
+    // Use `in` checks to avoid unsafe member access
+    if (!("originalname" in file) || !("buffer" in file)) return false;
+    const orig = (file as { originalname: unknown }).originalname;
+    const buf = (file as { buffer: unknown }).buffer;
+    return typeof orig === "string" && buf instanceof Buffer;
 }
 
 @Injectable({ scope: Scope.REQUEST })
@@ -89,35 +90,42 @@ export class SlideService {
         // Enforce project ownership/visibility (defensive)
         await this.projectService.ensureUserOwnsProject(slide.projectId);
 
-        // Validate uploaded image from PATCH
-        if (!isUploadedImage(file)) {
-            throw new BadRequestException(
-                "No image uploaded or invalid file payload. Expecting field 'image'.",
+        // If no file provided, keep existing imageRoute untouched
+        if (file !== undefined) {
+            // Validate uploaded image from PATCH using a strict runtime guard
+            if (!isMulterFile(file)) {
+                throw new BadRequestException(
+                    "No image uploaded or invalid file payload. Expecting field 'image'.",
+                );
+            }
+
+            // From here, `file` matches the Multer-like shape we need
+            const mf: MulterLikeFile = file;
+
+            // Derive a deterministic filename based on slide id, keep original extension if present
+            const originalExt: string =
+                path.extname(mf.originalname || "") || ".bin";
+            const safeExt = originalExt.toLowerCase();
+            const filename = `${slide.id}${safeExt}`;
+
+            // Build destination path: /uploads/projects/{projectId}/slides/{filename}
+            const webRoute = `/uploads/projects/${slide.projectId}/slides/${filename}`;
+            const diskDir = path.join(
+                process.cwd(),
+                "uploads",
+                "projects",
+                slide.projectId,
+                "slides",
             );
+            const diskPath = path.join(diskDir, filename);
+
+            // Ensure directory exists then write file
+            await fs.mkdir(diskDir, { recursive: true });
+            await fs.writeFile(diskPath, mf.buffer);
+
+            // Persist route onto entity (column: imageRoute)
+            slide.imageRoute = webRoute;
         }
-
-        // Derive a deterministic filename based on slide id, keep original extension if present
-        const originalExt = path.extname(file.originalname || "") || ".bin";
-        const safeExt = originalExt.toLowerCase();
-        const filename = `${slide.id}${safeExt}`;
-
-        // Build destination path: /uploads/projects/{projectId}/slides/{filename}
-        const webRoute = `/uploads/projects/${slide.projectId}/slides/${filename}`;
-        const diskDir = path.join(
-            process.cwd(),
-            "uploads",
-            "projects",
-            slide.projectId,
-            "slides",
-        );
-        const diskPath = path.join(diskDir, filename);
-
-        // Ensure directory exists then write file
-        await fs.mkdir(diskDir, { recursive: true });
-        await fs.writeFile(diskPath, file.buffer);
-
-        // Persist route onto entity (column: imageRoute)
-        slide.imageRoute = webRoute;
 
         // Save and return updated slide
         return await this.slideRepository.save(slide);
