@@ -2,10 +2,11 @@
     <div class="content">
         <p class="title">Log In</p>
         <p class="subtitle">Log in to your account</p>
-        @if (loginError()) {
-            <mat-error>Wrong Password/Email</mat-error>
-            }
+        
         <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
+            @if (loginError()) {
+            <mat-error>Wrong Password or Email</mat-error>
+            }
             <mat-form-field appearance="outline" hideRequiredMarker="true">
             <mat-label>Email Address</mat-label>
             <input

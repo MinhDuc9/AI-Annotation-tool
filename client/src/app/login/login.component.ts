@@ -8,6 +8,7 @@ import { MatInputModule } from '@angular/material/input';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/Auth.service';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import {catchError, throwError} from 'rxjs';
 
 
 export class LoginErrorStateMatcher implements ErrorStateMatcher {
@@ -52,13 +53,30 @@ export class LoginComponent {
   }
 
   onSubmit() {
-    this.authService.login(this.email()?.value!, this.password()?.value!).subscribe(token => {
-      console.log(token)
-      sessionStorage.setItem('email', this.email()?.value!);
-      sessionStorage.setItem('token', token);
-      this.router.navigate(['/']);
-      this._snackBar.open('Logged in successfully', 'Close', { duration: 3000 });
-    })
+    if(this.loginForm.invalid){
+      return;
+    }
+    this.authService
+        .login(this.email()?.value!, this.password()?.value!)
+        .pipe(catchError((err) => {
+          if (err.status === 401 || err.status === 404) {
+            this.loginError.set(true);
+            this._snackBar.open('Wrong Password or Email', 'Close', {
+                duration: 2000,
+            });
+            return throwError(() => new Error('Invalid Login'));
+          }
+          return throwError(() => new Error('Something went wrong. Please try again later.'));
+        }))
+        .subscribe((token) => {
+            console.log(token);
+            sessionStorage.setItem('email', this.email()?.value!);
+            sessionStorage.setItem('token', token);
+            this.router.navigate(['/']);
+            this._snackBar.open('Logged in successfully', 'Close', {
+                duration: 2000,
+            });
+        });
   }
 
   
