@@ -12,6 +12,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { JwtAuthGuard } from "./jwt/jwt-auth.guard";
 import { ProjectUserRole } from "./project-user-role/entities/project-user-role.entity";
 import { ProjectUserRoleModule } from "./project-user-role/project-user-role.module";
+import { SlideModule } from "./slide/slide.module";
 
 @Module({
     imports: [
@@ -35,6 +36,7 @@ import { ProjectUserRoleModule } from "./project-user-role/project-user-role.mod
         ProjectModule,
         ProjectUserRoleModule,
         AuthModule,
+        SlideModule,
     ],
     controllers: [AppController],
     providers: [
