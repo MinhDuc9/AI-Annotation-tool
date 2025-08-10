@@ -13,6 +13,7 @@ import { JwtAuthGuard } from "./jwt/jwt-auth.guard";
 import { ProjectUserRole } from "./project-user-role/entities/project-user-role.entity";
 import { ProjectUserRoleModule } from "./project-user-role/project-user-role.module";
 import { SlideModule } from "./slide/slide.module";
+import { Slide } from "./slide/entities/slide.entity";
 
 @Module({
     imports: [
@@ -27,7 +28,7 @@ import { SlideModule } from "./slide/slide.module";
                 username: config.get<string>("USER_NAME"),
                 password: config.get<string>("DATABASE_PASS"),
                 database: config.get<string>("DATABASE"),
-                entities: [User, Project, ProjectUserRole],
+                entities: [User, Project, ProjectUserRole, Slide],
                 synchronize: true,
                 logging: true,
             }),

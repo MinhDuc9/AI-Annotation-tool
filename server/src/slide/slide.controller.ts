@@ -6,18 +6,22 @@ import {
     Patch,
     Param,
     Delete,
+    UseGuards,
 } from "@nestjs/common";
 import { SlideService } from "./slide.service";
-import { CreateSlideDto } from "./dto/create-slide.dto";
 import { UpdateSlideDto } from "./dto/update-slide.dto";
+import { RolesGuard } from "src/roles/roles.guard";
+import { Roles } from "src/roles/roles.decorator";
 
 @Controller("slide")
+@UseGuards(RolesGuard)
 export class SlideController {
     constructor(private readonly slideService: SlideService) {}
 
-    @Post()
-    create(@Body() createSlideDto: CreateSlideDto) {
-        return this.slideService.create(createSlideDto);
+    @Post(":project_id")
+    @Roles("admin", "write")
+    create(@Param("project_id") projectId: string) {
+        return this.slideService.create(projectId);
     }
 
     @Get()
