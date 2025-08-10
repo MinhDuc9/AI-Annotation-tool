@@ -16,4 +16,8 @@ export class AuthService {
     return token;
   }
 
+  register(email: string, password: string) {
+    
+  }
+
 }
