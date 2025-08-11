@@ -68,10 +68,14 @@
 
                 @if (confirmPassword()?.hasError('required')) {
                     <mat-error>Confirming password is required</mat-error>
-                } @else if (password()?.value! !== confirmPassword()?.value!) {
-                    <mat-error>Passwords do not match</mat-error>
                 }
             </mat-form-field>
+
+            <mat-error>
+                @if (password()?.value! !== confirmPassword()?.value!) {
+                    Passwords do not match
+                }
+            </mat-error>
 
             <span>
                 <a matButton="text" type="button" routerLink="/login">Login</a>
