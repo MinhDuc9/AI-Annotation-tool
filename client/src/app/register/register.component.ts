@@ -8,6 +8,7 @@ import { AuthService } from '../services/Auth.service';
 import { FormControl, FormGroup, FormGroupDirective, NgForm, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ErrorStateMatcher } from '@angular/material/core';
 import { MatIconModule } from "@angular/material/icon";
+import { catchError, throwError } from 'rxjs';
 
 export class RegisterErrorStateMatcher implements ErrorStateMatcher {
   isErrorState(control: FormControl | null, form: FormGroupDirective | NgForm | null): boolean {
@@ -30,6 +31,7 @@ export class RegisterComponent {
   registerError = signal(false);
 
   registerForm = new FormGroup({
+    username: new FormControl('', [Validators.required]),
     email: new FormControl('', [Validators.required, Validators.email]),
     password: new FormControl('', [Validators.required]),
     confirmPassword: new FormControl('', [Validators.required])
@@ -44,6 +46,10 @@ export class RegisterComponent {
     event.stopPropagation();
   };
 
+  username(){
+    return this.registerForm.get('username')
+  }
+
   email(){
     return this.registerForm.get('email');
   };
@@ -57,6 +63,23 @@ export class RegisterComponent {
   };
 
   onSubmit(){
-
+    if(this.registerForm.invalid){
+      return;
+    }
+    this.authService
+        .register(this.username()?.value!, this.email()?.value!, this.password()?.value!)
+        .pipe(catchError((err) => {
+          if (err.status === 401 || err.status === 404) {
+            this.registerError.set(true);
+            this._snackBar.open('Email already used', 'Close', {
+                duration: 2000,
+            });
+            return throwError(() => new Error('Invalid Login'));
+          }
+          return throwError(() => new Error('Something went wrong. Please try again later.'));
+        }))
+        .subscribe(() => {
+            this.router.navigate(['/register']);
+        });
   };
 }

@@ -4,10 +4,22 @@
         <p class="subtitle">Register a new account</p>
 
         <form [formGroup]="registerForm" (ngSubmit)="onSubmit()">
-            @if (registerError()) {
-                <mat-error>Wrong Password or Email</mat-error>
-            }
             
+            <mat-form-field appearance="outline" hideRequiredMarker="true">
+                <mat-label>Username</mat-label>
+                <input
+                    matInput
+                    formControlName="username"
+                    [errorStateMatcher]="matcher"
+                    placeholder="Create username"
+                    required
+                />
+
+                @if (username()?.hasError('required')) {
+                    <mat-error>Username is required</mat-error>
+                }
+            </mat-form-field>
+
             <mat-form-field appearance="outline" hideRequiredMarker="true">
                 <mat-label>Email Address</mat-label>
                 <input

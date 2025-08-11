@@ -16,8 +16,9 @@ export class AuthService {
     return token;
   }
 
-  register(email: string, password: string) {
-    
+  register(userName: string, email: string, password: string) {
+    let token = this.http.post<string>('http://localhost:8080/user/login', {"userName": userName, "email": email, "password": password}, {responseType: 'text' as 'json'});
+    return token;
   }
 
 }
