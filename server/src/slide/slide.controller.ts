@@ -42,8 +42,7 @@ export class SlideController {
     @Roles("admin", "write")
     update(
         @Param("project_id") _: string,
-        @Param("slide_id")
-        id: string,
+        @Param("slide_id") id: string,
         @UploadedFile() file: unknown,
         @Body() dto: UpdateSlideDto,
     ) {
