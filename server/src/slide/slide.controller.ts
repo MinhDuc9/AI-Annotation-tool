@@ -41,7 +41,7 @@ export class SlideController {
     @UseInterceptors(FileInterceptor("image"))
     @Roles("admin", "write")
     update(
-        @Param("project_id") _,
+        @Param("project_id") _: string,
         @Param("slide_id")
         id: string,
         @UploadedFile() file: unknown,
