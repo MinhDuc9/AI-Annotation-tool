@@ -29,11 +29,11 @@
                     placeholder="Insert email"
                     required
                 />
-
-                @if (email()?.hasError('email') && !email()?.hasError('required')) {
-                    <mat-error>Please enter a valid email address</mat-error>
-                } @if (email()?.hasError('required')) {
+                @if (email()?.hasError('required')) {
                     <mat-error>Email is required</mat-error>
+                } 
+                @else if (email()?.hasError('email')) {
+                    <mat-error>Please enter a valid email address</mat-error>
                 }
             </mat-form-field>
 
@@ -57,6 +57,24 @@
 
                 @if (password()?.hasError('required')) {
                     <mat-error>Password is required</mat-error>
+                }
+                @else if (password()?.hasError('minlength')) {
+                    <mat-error>Password needs to have at least 8 characters</mat-error>
+                }
+                @else if (password()?.hasError('maxlength')) {
+                    <mat-error>Password can have at most 20 characters</mat-error>
+                }
+                @else if (password()?.hasError('hasUpperCase')) {
+                    <mat-error>Password requires upper case letters</mat-error>
+                }
+                @else if (password()?.hasError('hasLowerCase')) {
+                    <mat-error>Password requires lower case letters</mat-error>
+                }
+                @else if (password()?.hasError('hasNumericChar')) {
+                    <mat-error>Password requires numbers</mat-error>
+                }
+                @else if (password()?.hasError('aSpecialChar')) {
+                    <mat-error>Password requires special characters (!&#64;&#123;&#125;#$^&*(),.?":|&lt;&gt;\)</mat-error>
                 }
             </mat-form-field>
 

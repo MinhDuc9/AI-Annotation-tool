@@ -9,6 +9,7 @@ import { FormControl, FormGroup, FormGroupDirective, NgForm, ReactiveFormsModule
 import { ErrorStateMatcher } from '@angular/material/core';
 import { MatIconModule } from "@angular/material/icon";
 import { catchError, throwError } from 'rxjs';
+import PasswordValidator from '../shared/password-validator.validator';
 
 export class RegisterErrorStateMatcher implements ErrorStateMatcher {
   isErrorState(control: FormControl | null, form: FormGroupDirective | NgForm | null): boolean {
@@ -33,7 +34,7 @@ export class RegisterComponent {
   registerForm = new FormGroup({
     username: new FormControl('', [Validators.required]),
     email: new FormControl('', [Validators.required, Validators.email]),
-    password: new FormControl('', [Validators.required]),
+    password: new FormControl('', [Validators.required, Validators.minLength(8), Validators.maxLength(20), PasswordValidator.passwordStrength]),
     confirmPassword: new FormControl('', [Validators.required])
   });
 
@@ -76,10 +77,17 @@ export class RegisterComponent {
             });
             return throwError(() => new Error('Invalid Login'));
           }
-          return throwError(() => new Error('Something went wrong. Please try again later.'));
+          else {
+            this.registerError.set(true);
+            this._snackBar.open('Something went wrong. Please try again later.', 'Close', {
+                duration: 2000,
+            });
+            return throwError(() => new Error('Something went wrong. Please try again later.'));
+          }
         }))
-        .subscribe(() => {
-            this.router.navigate(['/register']);
+        .subscribe((token) => {
+            console.log(token);
+            this.router.navigate(['/login']);
         });
   };
 }
