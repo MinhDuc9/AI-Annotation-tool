@@ -1,4 +1,5 @@
 import { ProjectUserRole } from "src/project-user-role/entities/project-user-role.entity";
+import { Slide } from "src/slide/entities/slide.entity";
 import { Entity, Column, PrimaryGeneratedColumn, OneToMany } from "typeorm";
 
 @Entity()
@@ -13,4 +14,9 @@ export class Project {
         cascade: true, // When saving project, automatically save related user roles
     })
     userRoles: ProjectUserRole[];
+
+    @OneToMany(() => Slide, (slide) => slide.project, {
+        cascade: true,
+    })
+    slides: Slide[];
 }

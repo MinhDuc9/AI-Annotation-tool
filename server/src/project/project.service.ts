@@ -80,7 +80,7 @@ export class ProjectService {
         }));
     }
 
-    private async ensureUserOwnsProject(projectId: string): Promise<Project> {
+    async ensureUserOwnsProject(projectId: string): Promise<Project> {
         const project = await this.projectRepository.findOne({
             where: { id: projectId },
             relations: ["userRoles"],

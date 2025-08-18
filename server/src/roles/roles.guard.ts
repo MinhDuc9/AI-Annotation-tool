@@ -31,7 +31,35 @@ export class RolesGuard implements CanActivate {
         }
         const request = context.switchToHttp().getRequest<Request>();
         const user = request.user as JwtPayload;
-        const projectId: string = request.params.projectId;
+
+        // Accept multiple naming conventions for the route/body param (typed safely)
+        type ParamDict = Record<string, string | undefined>;
+        const params: ParamDict = (request.params ?? {}) as ParamDict;
+
+        const rawBody: unknown = request.body as unknown;
+        const body: Record<string, unknown> =
+            rawBody && typeof rawBody === "object"
+                ? (rawBody as Record<string, unknown>)
+                : {};
+
+        const fromBody = (key: string): string | undefined => {
+            const v = body[key];
+            return typeof v === "string" ? v : undefined;
+        };
+
+        const projectId =
+            params.project_id ??
+            params.projectId ??
+            params.project ??
+            params.projectid ??
+            fromBody("projectId") ??
+            fromBody("project_id");
+
+        if (!projectId) {
+            throw new ForbiddenException(
+                "Missing project id in route/body for role check",
+            );
+        }
 
         // Fetch this user's role entries for the project
         const roles = await this.projectUserRoleService.findByProjectAndUser(
