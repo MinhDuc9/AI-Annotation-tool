@@ -36,3 +36,19 @@ div{
 mat-form-field{
   width: 100%;
 }
+
+form{
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+}
+
+span{
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}

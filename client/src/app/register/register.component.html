@@ -3,24 +3,115 @@
         <p class="title">Register</p>
         <p class="subtitle">Register a new account</p>
 
-        <mat-form-field appearance="outline">
-        <mat-label>Email Address</mat-label>
-        <input matInput placeholder="Insert email">
-        <mat-hint>Hint</mat-hint>
-        </mat-form-field>
+        <form [formGroup]="registerForm" (ngSubmit)="onSubmit()">
+            
+            <mat-form-field appearance="outline" hideRequiredMarker="true">
+                <mat-label>Username</mat-label>
+                <input
+                    matInput
+                    formControlName="username"
+                    [errorStateMatcher]="matcher"
+                    placeholder="Create username"
+                    required
+                />
 
-        <mat-form-field appearance="outline">
-        <mat-label>Password</mat-label>
-        <input matInput placeholder="Insert Password">
-        <mat-hint>Hint</mat-hint>
-        </mat-form-field>
+                @if (username()?.hasError('required')) {
+                    <mat-error>Username is required</mat-error>
+                }
+            </mat-form-field>
 
-        <mat-form-field appearance="outline">
-        <mat-label>Repeat Password</mat-label>
-        <input matInput placeholder="Insert Password">
-        <mat-hint>Hint</mat-hint>
-        </mat-form-field>
+            <mat-form-field appearance="outline" hideRequiredMarker="true">
+                <mat-label>Email Address</mat-label>
+                <input
+                    matInput
+                    formControlName="email"
+                    [errorStateMatcher]="matcher"
+                    placeholder="Insert email"
+                    required
+                />
+                @if (email()?.hasError('required')) {
+                    <mat-error>Email is required</mat-error>
+                } 
+                @else if (email()?.hasError('email')) {
+                    <mat-error>Please enter a valid email address</mat-error>
+                }
+            </mat-form-field>
 
-        <button matButton="filled">Register</button>
+            <mat-form-field appearance="outline" hideRequiredMarker="true">
+                <mat-label>Password</mat-label>
+                <input matInput [type]="hidePassword() ? 'password' : 'text'" formControlName="password"
+                    [errorStateMatcher]="matcher" placeholder="Insert password" required/>
+                
+                <button
+                    matIconButton
+                    matSuffix
+                    (click)="clickEvent($event, hidePassword)"
+                    [attr.aria-label]="'Hide password'"
+                    [attr.aria-pressed]="hidePassword()"
+                    type="button"
+                >
+                    <mat-icon>{{
+                        hidePassword() ? "visibility_off" : "visibility"
+                    }}</mat-icon>
+                </button>
+
+                @if (password()?.hasError('required')) {
+                    <mat-error>Password is required</mat-error>
+                }
+                @else if (password()?.hasError('minlength')) {
+                    <mat-error>Password needs to have at least 8 characters</mat-error>
+                }
+                @else if (password()?.hasError('maxlength')) {
+                    <mat-error>Password can have at most 20 characters</mat-error>
+                }
+                @else if (password()?.hasError('hasUpperCase')) {
+                    <mat-error>Password requires upper case letters</mat-error>
+                }
+                @else if (password()?.hasError('hasLowerCase')) {
+                    <mat-error>Password requires lower case letters</mat-error>
+                }
+                @else if (password()?.hasError('hasNumericChar')) {
+                    <mat-error>Password requires numbers</mat-error>
+                }
+                @else if (password()?.hasError('aSpecialChar')) {
+                    <mat-error>Password requires special characters (!&#64;&#123;&#125;#$^&*(),.?":|&lt;&gt;\)</mat-error>
+                }
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" hideRequiredMarker="true">
+                <mat-label>Confirm Password</mat-label>
+                <input matInput [type]="hideConfirmPassword() ? 'password' : 'text'" formControlName="confirmPassword"
+                    [errorStateMatcher]="matcher" placeholder="Insert password" required/>
+                
+                <button
+                    matIconButton
+                    matSuffix
+                    (click)="clickEvent($event, hideConfirmPassword)"
+                    [attr.aria-label]="'Hide password'"
+                    [attr.aria-pressed]="hideConfirmPassword()"
+                    type="button"
+                >
+                    <mat-icon>{{
+                        hideConfirmPassword() ? "visibility_off" : "visibility"
+                    }}</mat-icon>
+                </button>
+
+                @if (confirmPassword()?.hasError('required')) {
+                    <mat-error>Confirming password is required</mat-error>
+                }
+            </mat-form-field>
+
+            <mat-error>
+                @if (password()?.value! !== confirmPassword()?.value!) {
+                    Passwords do not match
+                }
+            </mat-error>
+
+            <span>
+                <a matButton="text" type="button" routerLink="/login">Login</a>
+                <button matButton="filled" type="submit">Register</button>
+            </span>
+
+        </form>
     </div>
 </main>

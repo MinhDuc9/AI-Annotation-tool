@@ -2,44 +2,55 @@
     <div class="content">
         <p class="title">Log In</p>
         <p class="subtitle">Log in to your account</p>
-        <form>
-            <mat-form-field appearance="outline">
+        
+        <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
+            @if (loginError()) {
+            <mat-error>Wrong Password or Email</mat-error>
+            }
+            <mat-form-field appearance="outline" hideRequiredMarker="true">
             <mat-label>Email Address</mat-label>
             <input
                 matInput
-                [formControl]="emailFormControl"
+                formControlName="email"
                 [errorStateMatcher]="matcher"
                 placeholder="Insert email"
+                required
             />
-            @if (emailFormControl.hasError('email') &&
-            !emailFormControl.hasError('required')) {
+            @if (email()?.hasError('email') &&
+            !email()?.hasError('required')) {
             <mat-error>Please enter a valid email address</mat-error>
-            } @if (emailFormControl.hasError('required')) {
-            <mat-error>Email is <strong>required</strong></mat-error>
+            } @if (email()?.hasError('required')) {
+            <mat-error>Email is required</mat-error>
             }
         </mat-form-field>
 
-        <mat-form-field appearance="outline">
+        <mat-form-field appearance="outline" hideRequiredMarker="true">
             <mat-label>Password</mat-label>
-            <input matInput [type]="hide() ? 'password' : 'text'" [formControl]="passwordFormControl"
-                [errorStateMatcher]="matcher" placeholder="Insert password" />
+            <input matInput [type]="hide() ? 'password' : 'text'" formControlName="password"
+                [errorStateMatcher]="matcher" placeholder="Insert password" required/>
             <button
                 matIconButton
                 matSuffix
                 (click)="clickEvent($event)"
                 [attr.aria-label]="'Hide password'"
                 [attr.aria-pressed]="hide()"
+                type="button"
             >
                 <mat-icon>{{
                     hide() ? "visibility_off" : "visibility"
                 }}</mat-icon>
             </button>
-            @if (passwordFormControl.hasError('required')) {
-            <mat-error>Password is <strong>required</strong></mat-error>
+            @if (password()?.hasError('required')) {
+            <mat-error>Password is required</mat-error>
             }
         </mat-form-field>
 
-        <button matButton="filled">Login</button>
+        <span>
+            <a matButton="text" type="button" routerLink="/register">Register</a>
+            <button matButton="filled" type="submit">Login</button>
+        </span>
+
+        
         </form>
     </div>
 </main>
