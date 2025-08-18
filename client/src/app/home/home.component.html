@@ -1,3 +1,8 @@
+<app-sidebar 
+    [isLeftSidebarCollapsed]="isLeftSidebarCollapsed()"
+    (changeIsLeftSidebarCollapsed)="changeIsLeftSidebarCollapsed($event)"
+/>
+
 <p>Hello {{username()}}!</p>
 
 <button (click) = "getUsers()">Console Log (Get All Users)</button>
