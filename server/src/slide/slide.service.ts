@@ -6,10 +6,6 @@ import {
 } from "@nestjs/common";
 import * as path from "path";
 import { createReadStream, promises as fs } from "fs";
-import { PassThrough } from "stream";
-import type { Archiver } from "archiver";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import archiver = require("archiver");
 import { UpdateSlideDto } from "./dto/update-slide.dto";
 import { Slide } from "./entities/slide.entity";
 import { ProjectService } from "src/project/project.service";
@@ -62,52 +58,11 @@ export class SlideService {
         return created;
     }
 
-    async findAll(projectId: string): Promise<StreamableFile> {
+    async findAll(projectId: string): Promise<Slide[]> {
         await this.projectService.ensureUserOwnsProject(projectId);
-
-        const slides = await this.slideRepository.find({
+        return this.slideRepository.find({
             where: { projectId },
-        });
-        const files: Array<{ path: string; name: string }> = [];
-
-        for (const slide of slides) {
-            if (!slide.imageRoute) continue;
-            const relPath = slide.imageRoute.replace(/^\/+/, "");
-            const diskPath = path.join(process.cwd(), relPath);
-            try {
-                await fs.access(diskPath);
-            } catch {
-                continue;
-            }
-            const ext = path.extname(diskPath).toLowerCase();
-            const name = `${slide.id}${ext || ""}`;
-            files.push({ path: diskPath, name });
-        }
-
-        if (files.length === 0) {
-            throw new NotFoundException(
-                `No images found for project ${projectId}`,
-            );
-        }
-
-        // Create a streaming ZIP archive
-        const pass = new PassThrough();
-        const archive: Archiver = archiver("zip", { zlib: { level: 9 } });
-
-        archive.on("error", (err: Error) => {
-            pass.destroy(err);
-        });
-
-        archive.pipe(pass);
-        for (const f of files) {
-            archive.file(f.path, { name: f.name });
-        }
-        // Finalize the archive asynchronously (starts streaming)
-        void archive.finalize();
-
-        return new StreamableFile(pass, {
-            type: "application/zip",
-            disposition: `attachment; filename="project-${projectId}-images.zip"`,
+            select: ["id", "projectId"],
         });
     }
 
