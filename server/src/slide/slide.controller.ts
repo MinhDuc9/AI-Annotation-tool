@@ -27,14 +27,14 @@ export class SlideController {
         return this.slideService.create(projectId);
     }
 
-    @Get()
-    findAll() {
-        return this.slideService.findAll();
+    @Get("get_all/:project_id")
+    findAll(@Param("project_id") projectId: string) {
+        return this.slideService.findAll(projectId);
     }
 
-    @Get(":id")
-    findOne(@Param("id") id: string) {
-        return this.slideService.findOne(+id);
+    @Get(":slide_id")
+    findOne(@Param("slide_id") slideId: string) {
+        return this.slideService.findOne(slideId);
     }
 
     @Patch(":project_id/:slide_id")
@@ -42,15 +42,15 @@ export class SlideController {
     @Roles("admin", "write")
     update(
         @Param("project_id") _: string,
-        @Param("slide_id") id: string,
+        @Param("slide_id") slideId: string,
         @UploadedFile() file: unknown,
         @Body() dto: UpdateSlideDto,
     ) {
-        return this.slideService.update(id, dto, file);
+        return this.slideService.update(slideId, dto, file);
     }
 
-    @Delete(":id")
-    remove(@Param("id") id: string) {
-        return this.slideService.remove(+id);
+    @Delete(":slide_id")
+    remove(@Param("slide_id") slideId: string) {
+        return this.slideService.remove(slideId);
     }
 }

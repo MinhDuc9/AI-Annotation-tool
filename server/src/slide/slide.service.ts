@@ -2,9 +2,14 @@ import {
     BadRequestException,
     Injectable,
     NotFoundException,
+    StreamableFile,
 } from "@nestjs/common";
 import * as path from "path";
-import { promises as fs } from "fs";
+import { createReadStream, promises as fs } from "fs";
+import { PassThrough } from "stream";
+import type { Archiver } from "archiver";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import archiver = require("archiver");
 import { UpdateSlideDto } from "./dto/update-slide.dto";
 import { Slide } from "./entities/slide.entity";
 import { ProjectService } from "src/project/project.service";
@@ -57,19 +62,108 @@ export class SlideService {
         return created;
     }
 
-    findAll() {
-        return `This action returns all slide`;
+    async findAll(projectId: string): Promise<StreamableFile> {
+        await this.projectService.ensureUserOwnsProject(projectId);
+
+        const slides = await this.slideRepository.find({
+            where: { projectId },
+        });
+        const files: Array<{ path: string; name: string }> = [];
+
+        for (const slide of slides) {
+            if (!slide.imageRoute) continue;
+            const relPath = slide.imageRoute.replace(/^\/+/, "");
+            const diskPath = path.join(process.cwd(), relPath);
+            try {
+                await fs.access(diskPath);
+            } catch {
+                continue;
+            }
+            const ext = path.extname(diskPath).toLowerCase();
+            const name = `${slide.id}${ext || ""}`;
+            files.push({ path: diskPath, name });
+        }
+
+        if (files.length === 0) {
+            throw new NotFoundException(
+                `No images found for project ${projectId}`,
+            );
+        }
+
+        // Create a streaming ZIP archive
+        const pass = new PassThrough();
+        const archive: Archiver = archiver("zip", { zlib: { level: 9 } });
+
+        archive.on("error", (err: Error) => {
+            pass.destroy(err);
+        });
+
+        archive.pipe(pass);
+        for (const f of files) {
+            archive.file(f.path, { name: f.name });
+        }
+        // Finalize the archive asynchronously (starts streaming)
+        void archive.finalize();
+
+        return new StreamableFile(pass, {
+            type: "application/zip",
+            disposition: `attachment; filename="project-${projectId}-images.zip"`,
+        });
     }
 
-    findOne(id: number) {
-        return `This action returns a #${id} slide`;
+    async findOne(slideId: string): Promise<StreamableFile | null> {
+        // Find slide
+        const slide = await this.slideRepository.findOneBy({ id: slideId });
+        if (!slide) {
+            throw new NotFoundException(`Slide with id ${slideId} not found`);
+        }
+
+        // Enforce project ownership/visibility (defensive)
+        await this.projectService.ensureUserOwnsProject(slide.projectId);
+
+        // If no image route stored, return nothing as requested
+        if (!slide.imageRoute) {
+            return null;
+        }
+
+        // Build absolute disk path from stored web route, e.g. "/uploads/..."
+        const relPath = slide.imageRoute.replace(/^\/+/, "");
+        const diskPath = path.join(process.cwd(), relPath);
+
+        // Ensure the file exists
+        try {
+            await fs.access(diskPath);
+        } catch {
+            throw new NotFoundException(
+                `Image file not found for slide ${slideId}`,
+            );
+        }
+
+        // Minimal content-type mapping by extension
+        const ext = path.extname(diskPath).toLowerCase();
+        const mimeMap: Record<string, string> = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+            ".bmp": "image/bmp",
+        };
+        const contentType = mimeMap[ext] || "application/octet-stream";
+
+        const fileStream = createReadStream(diskPath);
+
+        return new StreamableFile(fileStream, {
+            type: contentType,
+            disposition: `inline; filename="${path.basename(diskPath)}"`,
+        });
     }
 
     async update(
         slideId: string,
         _updateSlideDto: UpdateSlideDto,
         file?: unknown,
-    ) {
+    ): Promise<Slide> {
         // Find slide
         const slide = await this.slideRepository.findOneBy({ id: slideId });
         if (!slide) {
@@ -120,7 +214,33 @@ export class SlideService {
         return await this.slideRepository.save(slide);
     }
 
-    remove(id: number) {
-        return `This action removes a #${id} slide`;
+    async remove(slideId: string) {
+        const slide = await this.slideRepository.findOneBy({ id: slideId });
+        if (!slide) {
+            throw new NotFoundException(`Slide with id ${slideId} not found`);
+        }
+
+        // Best-effort removal of the image from the filesystem
+        if (slide.imageRoute) {
+            const relPath = slide.imageRoute.replace(/^\/+/, "");
+            const diskPath = path.join(process.cwd(), relPath);
+            try {
+                await fs.unlink(diskPath);
+            } catch (err: unknown) {
+                // Ignore if the file doesn't exist; rethrow other errors
+                const code =
+                    typeof err === "object" && err && "code" in err
+                        ? (err as { code?: string }).code
+                        : undefined;
+                if (code !== "ENOENT") {
+                    throw err;
+                }
+            }
+        }
+
+        // Delete the slide record
+        await this.slideRepository.delete({ id: slideId });
+
+        return `Removed slide ${slideId}`;
     }
 }
