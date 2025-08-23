@@ -101,9 +101,12 @@ export class CommentGateway {
         return {
             event: "message",
             data: {
+                id: saved.id,
                 slideId: slideIdStr,
                 userId: userIdStr,
                 content: contentStr,
+                createdAt: saved.createdAt,
+                updatedAt: saved.updatedAt,
             },
         };
     }
@@ -171,6 +174,7 @@ export class CommentGateway {
                 userId: saved.userId,
                 content: saved.content,
                 createdAt: saved.createdAt,
+                updatedAt: saved.updatedAt,
             },
         };
     }
