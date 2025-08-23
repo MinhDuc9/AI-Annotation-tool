@@ -68,7 +68,7 @@ export class SlideService {
         });
     }
 
-    async findOne(slideId: string): Promise<StreamableFile | null> {
+    async findOneWithImage(slideId: string): Promise<StreamableFile | null> {
         // Find slide
         const slide = await this.slideRepository.findOneBy({ id: slideId });
         if (!slide) {

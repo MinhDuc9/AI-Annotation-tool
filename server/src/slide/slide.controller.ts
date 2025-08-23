@@ -34,7 +34,7 @@ export class SlideController {
 
     @Get("image/:slide_id")
     findOne(@Param("slide_id") slideId: string) {
-        return this.slideService.findOne(slideId);
+        return this.slideService.findOneWithImage(slideId);
     }
 
     @Get("comments/:slide_id")
