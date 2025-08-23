@@ -174,4 +174,137 @@ export class CommentGateway {
             },
         };
     }
+
+    @SubscribeMessage("updateComment")
+    async handleUpdateMessage(
+        @MessageBody() payload: unknown,
+    ): Promise<WsResponse<Record<string, unknown>>> {
+        const obj = this.handlePayload(payload);
+        const slideIdStr = typeof obj.slideId === "string" ? obj.slideId : "";
+        const userIdStr = typeof obj.userId === "string" ? obj.userId : "";
+        const contentStr = typeof obj.content === "string" ? obj.content : "";
+        const commentIdStr =
+            typeof obj.commentId === "string" ? obj.commentId : "";
+
+        if (!slideIdStr || !userIdStr || !contentStr || !commentIdStr) {
+            return {
+                event: "error",
+                data: {
+                    message:
+                        "slideId, userId, commentId and content are required",
+                },
+            };
+        }
+
+        // Ensure the slide exists
+        const slide = await this.slideRepository.findOne({
+            where: { id: slideIdStr },
+        });
+        if (!slide) {
+            return { event: "error", data: { message: "Slide not found" } };
+        }
+
+        // Ensure the comment exists and belongs to the slide
+        const comment = await this.commentRepository.findOne({
+            where: { id: commentIdStr, slideId: slideIdStr },
+        });
+        if (!comment) {
+            return {
+                event: "error",
+                data: { message: "Comment not found" },
+            };
+        }
+
+        // Optional authorization: only the creator can update their comment
+        if (comment.userId !== userIdStr) {
+            return {
+                event: "error",
+                data: { message: "You can only update your own comment" },
+            };
+        }
+
+        // Update and persist
+        comment.content = contentStr;
+        const saved = await this.commentRepository.save(comment);
+
+        // Broadcast only to the slide-specific room (no global emits)
+        this.server.to(`slide:${slideIdStr}`).emit("commentUpdated", saved);
+
+        return {
+            event: "message",
+            data: {
+                id: saved.id,
+                slideId: saved.slideId,
+                userId: saved.userId,
+                content: saved.content,
+                createdAt: saved.createdAt,
+            },
+        };
+    }
+
+    @SubscribeMessage("deleteComment")
+    async handleDeleteMessage(
+        @MessageBody() payload: unknown,
+    ): Promise<WsResponse<Record<string, unknown>>> {
+        const obj = this.handlePayload(payload);
+        const slideIdStr = typeof obj.slideId === "string" ? obj.slideId : "";
+        const userIdStr = typeof obj.userId === "string" ? obj.userId : "";
+        const commentIdStr =
+            typeof obj.commentId === "string" ? obj.commentId : "";
+
+        if (!slideIdStr || !userIdStr || !commentIdStr) {
+            return {
+                event: "error",
+                data: {
+                    message: "slideId, userId and commentId are required",
+                },
+            };
+        }
+
+        // Ensure the slide exists
+        const slide = await this.slideRepository.findOne({
+            where: { id: slideIdStr },
+        });
+        if (!slide) {
+            return { event: "error", data: { message: "Slide not found" } };
+        }
+
+        // Ensure the comment exists and belongs to the slide
+        const comment = await this.commentRepository.findOne({
+            where: { id: commentIdStr, slideId: slideIdStr },
+        });
+        if (!comment) {
+            return {
+                event: "error",
+                data: { message: "Comment not found" },
+            };
+        }
+
+        // Optional authorization: only the creator can delete their comment
+        if (comment.userId !== userIdStr) {
+            return {
+                event: "error",
+                data: { message: "You can only delete your own comment" },
+            };
+        }
+
+        // Delete the comment
+        await this.commentRepository.delete(commentIdStr);
+
+        // Broadcast only to the slide-specific room (no global emits)
+        this.server
+            .to(`slide:${slideIdStr}`)
+            .emit("commentDeleted", { id: commentIdStr, slideId: slideIdStr });
+
+        // Respond with a JSON object (validated)
+        return {
+            event: "message",
+            data: {
+                deleted: true,
+                id: commentIdStr,
+                slideId: slideIdStr,
+                userId: userIdStr,
+            },
+        };
+    }
 }
