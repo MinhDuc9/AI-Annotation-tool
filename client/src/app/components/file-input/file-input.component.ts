@@ -25,7 +25,7 @@ export class FileInputComponent implements OnInit {
   allowMultipleFiles = input<boolean>(false);
 
   onfileUploaded = output<FileList>()
-  onfileRemoved = output<File>()
+  onfileRemoved = output<number>()
   uploadedFiles: File[] = []
 
   allowedTypesList: string[] = []
@@ -50,7 +50,7 @@ export class FileInputComponent implements OnInit {
 
   removeFile(index: number) {
     if (this.uploadedFiles.length > 0){
-      this.onfileRemoved.emit(this.uploadedFiles[index]);
+      this.onfileRemoved.emit(index);
       this.uploadedFiles.splice(index, 1);
     }
   }

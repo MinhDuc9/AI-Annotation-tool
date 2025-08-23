@@ -1,1 +1,21 @@
-<p>project-dialogue works!</p>,
+<main>
+    <form [formGroup]="projectForm" (ngSubmit)="onSubmit()">
+            <mat-form-field appearance="outline" hideRequiredMarker="true">
+            <mat-label>Project Name</mat-label>
+            <input
+                matInput
+                formControlName="projectName"
+                [errorStateMatcher]="matcher"
+                placeholder="Insert name"
+                required
+            />
+            @if (projectName()?.hasError('required')) {
+                <mat-error>Project name is required</mat-error>
+            }
+            </mat-form-field>
+            
+            <app-file-input [allowMultipleFiles]="false" [allowedTypes]="'.jpeg, .png'" (onfileRemoved)="removeFile($event)" (onfileUploaded)="uploadFile($event)" />
+
+            <button matButton="filled" type="submit">Login</button>
+        </form>
+</main>

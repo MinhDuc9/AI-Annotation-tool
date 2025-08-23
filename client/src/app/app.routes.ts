@@ -15,6 +15,10 @@ export const routes: Routes = [
         loadComponent: () => import('./login/login.component').then(m => m.LoginComponent)
     },
     {
+        path: 'project-dialogue',
+        loadComponent: () => import('./project-dialogue/project-dialogue.component').then(m => m.ProjectDialogueComponent)
+    },
+    {
         path: '**',
         redirectTo: ''
     }
