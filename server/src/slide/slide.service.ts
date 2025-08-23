@@ -11,6 +11,8 @@ import { Slide } from "./entities/slide.entity";
 import { ProjectService } from "src/project/project.service";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import { CommentService } from "src/comment/comment.service";
+import { Comment } from "src/comment/entities/comment.entity";
 
 // Minimal shape we need from a Multer file to avoid ambient type dependency
 interface MulterLikeFile {
@@ -33,8 +35,8 @@ export class SlideService {
     constructor(
         @InjectRepository(Slide)
         private readonly slideRepository: Repository<Slide>,
-
         private readonly projectService: ProjectService,
+        private readonly commentService: CommentService,
     ) {}
 
     async create(projectId: string): Promise<Slide> {
@@ -112,6 +114,29 @@ export class SlideService {
             type: contentType,
             disposition: `inline; filename="${path.basename(diskPath)}"`,
         });
+    }
+    async findOneWithComments(slideId: string): Promise<{
+        slideId: string;
+        projectId: string;
+        comments: Comment[];
+    }> {
+        // Find slide
+        const slide = await this.slideRepository.findOneBy({ id: slideId });
+        if (!slide) {
+            throw new NotFoundException(`Slide with id ${slideId} not found`);
+        }
+
+        // Enforce project ownership/visibility (defensive)
+        await this.projectService.ensureUserOwnsProject(slide.projectId);
+
+        // Fetch all comments for this slide (new)
+        const comments = await this.commentService.findAll(slide.id);
+
+        return {
+            slideId: slide.id,
+            projectId: slide.projectId,
+            comments,
+        };
     }
 
     async update(
