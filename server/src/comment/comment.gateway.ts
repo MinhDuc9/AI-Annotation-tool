@@ -27,26 +27,7 @@ export class CommentGateway {
         private slideRepo: Repository<Slide>,
     ) {}
 
-    @SubscribeMessage("joinSlide")
-    async handleJoinSlide(
-        @MessageBody() payload: { slideId: string },
-        @ConnectedSocket() client: Socket,
-    ): Promise<WsResponse<any>> {
-        const { slideId } = payload || ({} as any);
-
-        if (!slideId) {
-            return { event: "error", data: { message: "slideId is required" } };
-        }
-
-        await client.join(`slide:${slideId}`);
-        return { event: "joined", data: { slideId } };
-    }
-
-    @SubscribeMessage("createComment")
-    async handleMessage(
-        @MessageBody() payload: unknown,
-    ): Promise<WsResponse<Record<string, unknown>>> {
-        // Normalize payload into an object
+    private handlePayload(payload: unknown): Record<string, unknown> {
         let raw: unknown = payload;
         if (typeof payload === "string") {
             try {
@@ -64,6 +45,30 @@ export class CommentGateway {
         }
 
         const obj = raw as Record<string, unknown>;
+        return obj;
+    }
+
+    @SubscribeMessage("joinSlide")
+    async handleJoinSlide(
+        @MessageBody() payload: unknown,
+        @ConnectedSocket() client: Socket,
+    ): Promise<WsResponse<any>> {
+        const obj = this.handlePayload(payload);
+        const slideIdStr = typeof obj.slideId === "string" ? obj.slideId : "";
+
+        if (!slideIdStr) {
+            return { event: "error", data: { message: "slideId is required" } };
+        }
+
+        await client.join(`slide:${slideIdStr}`);
+        return { event: "joined", data: { slideId: slideIdStr } };
+    }
+
+    @SubscribeMessage("createComment")
+    async handleMessage(
+        @MessageBody() payload: unknown,
+    ): Promise<WsResponse<Record<string, unknown>>> {
+        const obj = this.handlePayload(payload);
         const slideIdStr = typeof obj.slideId === "string" ? obj.slideId : "";
         const userIdStr = typeof obj.userId === "string" ? obj.userId : "";
         const contentStr = typeof obj.content === "string" ? obj.content : "";
@@ -89,9 +94,7 @@ export class CommentGateway {
             content: contentStr,
         });
 
-        // Broadcast globally (so Postman receives it without joining rooms)
-        this.server.emit("commentCreated", saved);
-        // And to the slide-specific room for real clients
+        // Broadcast only to the slide-specific room (no global emits by design)
         this.server.to(`slide:${slideIdStr}`).emit("commentCreated", saved);
 
         // Respond with a JSON object (validated)
