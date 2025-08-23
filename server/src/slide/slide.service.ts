@@ -6,15 +6,13 @@ import {
 } from "@nestjs/common";
 import * as path from "path";
 import { createReadStream, promises as fs } from "fs";
-import { PassThrough } from "stream";
-import type { Archiver } from "archiver";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import archiver = require("archiver");
 import { UpdateSlideDto } from "./dto/update-slide.dto";
 import { Slide } from "./entities/slide.entity";
 import { ProjectService } from "src/project/project.service";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import { CommentService } from "src/comment/comment.service";
+import { Comment } from "src/comment/entities/comment.entity";
 
 // Minimal shape we need from a Multer file to avoid ambient type dependency
 interface MulterLikeFile {
@@ -37,8 +35,8 @@ export class SlideService {
     constructor(
         @InjectRepository(Slide)
         private readonly slideRepository: Repository<Slide>,
-
         private readonly projectService: ProjectService,
+        private readonly commentService: CommentService,
     ) {}
 
     async create(projectId: string): Promise<Slide> {
@@ -62,56 +60,15 @@ export class SlideService {
         return created;
     }
 
-    async findAll(projectId: string): Promise<StreamableFile> {
+    async findAll(projectId: string): Promise<Slide[]> {
         await this.projectService.ensureUserOwnsProject(projectId);
-
-        const slides = await this.slideRepository.find({
+        return this.slideRepository.find({
             where: { projectId },
-        });
-        const files: Array<{ path: string; name: string }> = [];
-
-        for (const slide of slides) {
-            if (!slide.imageRoute) continue;
-            const relPath = slide.imageRoute.replace(/^\/+/, "");
-            const diskPath = path.join(process.cwd(), relPath);
-            try {
-                await fs.access(diskPath);
-            } catch {
-                continue;
-            }
-            const ext = path.extname(diskPath).toLowerCase();
-            const name = `${slide.id}${ext || ""}`;
-            files.push({ path: diskPath, name });
-        }
-
-        if (files.length === 0) {
-            throw new NotFoundException(
-                `No images found for project ${projectId}`,
-            );
-        }
-
-        // Create a streaming ZIP archive
-        const pass = new PassThrough();
-        const archive: Archiver = archiver("zip", { zlib: { level: 9 } });
-
-        archive.on("error", (err: Error) => {
-            pass.destroy(err);
-        });
-
-        archive.pipe(pass);
-        for (const f of files) {
-            archive.file(f.path, { name: f.name });
-        }
-        // Finalize the archive asynchronously (starts streaming)
-        void archive.finalize();
-
-        return new StreamableFile(pass, {
-            type: "application/zip",
-            disposition: `attachment; filename="project-${projectId}-images.zip"`,
+            select: ["id", "projectId"],
         });
     }
 
-    async findOne(slideId: string): Promise<StreamableFile | null> {
+    async findOneWithImage(slideId: string): Promise<StreamableFile | null> {
         // Find slide
         const slide = await this.slideRepository.findOneBy({ id: slideId });
         if (!slide) {
@@ -157,6 +114,29 @@ export class SlideService {
             type: contentType,
             disposition: `inline; filename="${path.basename(diskPath)}"`,
         });
+    }
+    async findOneWithComments(slideId: string): Promise<{
+        slideId: string;
+        projectId: string;
+        comments: Comment[];
+    }> {
+        // Find slide
+        const slide = await this.slideRepository.findOneBy({ id: slideId });
+        if (!slide) {
+            throw new NotFoundException(`Slide with id ${slideId} not found`);
+        }
+
+        // Enforce project ownership/visibility (defensive)
+        await this.projectService.ensureUserOwnsProject(slide.projectId);
+
+        // Fetch all comments for this slide (new)
+        const comments = await this.commentService.findAll(slide.id);
+
+        return {
+            slideId: slide.id,
+            projectId: slide.projectId,
+            comments,
+        };
     }
 
     async update(
