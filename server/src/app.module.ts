@@ -14,6 +14,8 @@ import { ProjectUserRole } from "./project-user-role/entities/project-user-role.
 import { ProjectUserRoleModule } from "./project-user-role/project-user-role.module";
 import { SlideModule } from "./slide/slide.module";
 import { Slide } from "./slide/entities/slide.entity";
+import { CommentModule } from "./comment/comment.module";
+import { Comment } from "./comment/entities/comment.entity";
 
 @Module({
     imports: [
@@ -28,7 +30,7 @@ import { Slide } from "./slide/entities/slide.entity";
                 username: config.get<string>("USER_NAME"),
                 password: config.get<string>("DATABASE_PASS"),
                 database: config.get<string>("DATABASE"),
-                entities: [User, Project, ProjectUserRole, Slide],
+                entities: [User, Project, ProjectUserRole, Slide, Comment],
                 synchronize: true,
                 logging: true,
             }),
@@ -38,6 +40,7 @@ import { Slide } from "./slide/entities/slide.entity";
         ProjectUserRoleModule,
         AuthModule,
         SlideModule,
+        CommentModule,
     ],
     controllers: [AppController],
     providers: [

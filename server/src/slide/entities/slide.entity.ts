@@ -5,8 +5,10 @@ import {
     ManyToOne,
     Index,
     JoinColumn,
+    OneToMany,
 } from "typeorm";
 import { Project } from "src/project/entities/project.entity";
+import { Comment } from "src/comment/entities/comment.entity";
 
 @Entity()
 export class Slide {
@@ -25,4 +27,9 @@ export class Slide {
 
     @Column({ type: "varchar" })
     imageRoute: string;
+
+    @OneToMany(() => Comment, (comment) => comment.slide, {
+        cascade: true,
+    })
+    comments: Comment[];
 }
