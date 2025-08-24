@@ -27,12 +27,6 @@ export interface DeleteCommentPayload {
 
 export type CommentJobName = "create" | "update" | "delete";
 
-export type CommentJobDataMap = {
-    create: CreateCommentPayload;
-    update: UpdateCommentPayload;
-    delete: DeleteCommentPayload;
-};
-
 // Type guards for runtime validation & compile-time narrowing
 function isCreatePayload(d: unknown): d is CreateCommentPayload {
     const o = d as Record<string, unknown>;
