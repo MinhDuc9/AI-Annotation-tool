@@ -11,7 +11,15 @@ import { CommentsProcessor } from "./comment.processor";
     imports: [
         TypeOrmModule.forFeature([Comment, Slide]),
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        BullModule.registerQueue({ name: "comments" }),
+        BullModule.registerQueue({
+            name: "comments",
+            defaultJobOptions: {
+                attempts: 5,
+                backoff: { type: "fixed", delay: 60 * 30 * 1000 }, // retry every 30 min
+                removeOnComplete: true, // remove successful jobs immediately
+                removeOnFail: { age: 60 * 60 }, // keep failed jobs for 1h
+            },
+        }),
     ],
     providers: [CommentGateway, CommentService, CommentsProcessor],
     exports: [CommentService],

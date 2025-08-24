@@ -1,5 +1,6 @@
 import { Processor, WorkerHost } from "@nestjs/bullmq";
 import type { Job } from "bullmq";
+import { UnrecoverableError } from "bullmq";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Comment } from "./entities/comment.entity";
@@ -78,7 +79,8 @@ export class CommentsProcessor extends WorkerHost {
         });
 
         if (!slide) {
-            throw new Error("Slide not found");
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+            throw new UnrecoverableError("Slide not found");
         }
 
         return slide;
@@ -91,7 +93,8 @@ export class CommentsProcessor extends WorkerHost {
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 const data = job.data;
                 if (!isCreatePayload(data))
-                    throw new Error("Invalid create payload");
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+                    throw new UnrecoverableError("Invalid create payload");
 
                 await this.ensureSlide(data.slideId);
 
@@ -112,7 +115,8 @@ export class CommentsProcessor extends WorkerHost {
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 const data = job.data;
                 if (!isUpdatePayload(data))
-                    throw new Error("Invalid update payload");
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+                    throw new UnrecoverableError("Invalid update payload");
 
                 await this.ensureSlide(data.slideId);
 
@@ -120,10 +124,14 @@ export class CommentsProcessor extends WorkerHost {
                     where: { id: data.commentId, slideId: data.slideId },
                 });
                 if (!comment) {
-                    throw new Error("Comment not found");
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+                    throw new UnrecoverableError("Comment not found");
                 }
                 if (comment.userId !== data.userId) {
-                    throw new Error("You can only update your own comment");
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+                    throw new UnrecoverableError(
+                        "You can only update your own comment",
+                    );
                 }
 
                 comment.content = data.content;
@@ -140,7 +148,8 @@ export class CommentsProcessor extends WorkerHost {
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 const data = job.data;
                 if (!isDeletePayload(data)) {
-                    throw new Error("Invalid delete payload");
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+                    throw new UnrecoverableError("Invalid delete payload");
                 }
 
                 await this.ensureSlide(data.slideId);
@@ -150,11 +159,15 @@ export class CommentsProcessor extends WorkerHost {
                 });
 
                 if (!comment) {
-                    throw new Error("Comment not found");
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+                    throw new UnrecoverableError("Comment not found");
                 }
 
                 if (comment.userId !== data.userId) {
-                    throw new Error("You can only delete your own comment");
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+                    throw new UnrecoverableError(
+                        "You can only delete your own comment",
+                    );
                 }
 
                 await this.commentRepository.delete(data.commentId);
@@ -170,8 +183,8 @@ export class CommentsProcessor extends WorkerHost {
             }
 
             default: {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                throw new Error(`Unknown job name: ${job.name}`);
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+                throw new UnrecoverableError(`Unknown job name: ${job.name}`);
             }
         }
     }
