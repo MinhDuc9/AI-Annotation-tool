@@ -7,10 +7,8 @@ import {
     WebSocketServer,
 } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
-import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
-import { Comment } from "./entities/comment.entity";
-import { Slide } from "src/slide/entities/slide.entity";
+import { InjectQueue } from "@nestjs/bullmq";
+import { Queue } from "bullmq";
 
 @WebSocketGateway({
     cors: {
@@ -21,10 +19,8 @@ export class CommentGateway {
     @WebSocketServer() server: Server;
 
     constructor(
-        @InjectRepository(Comment)
-        private commentRepository: Repository<Comment>,
-        @InjectRepository(Slide)
-        private slideRepository: Repository<Slide>,
+        @InjectQueue("comments")
+        private readonly commentsQueue: Queue,
     ) {}
 
     private handlePayload(payload: unknown): Record<string, unknown> {
@@ -48,6 +44,7 @@ export class CommentGateway {
         return obj;
     }
 
+    @SubscribeMessage("message")
     @SubscribeMessage("joinSlide")
     async handleJoinSlide(
         @MessageBody() payload: unknown,
@@ -64,6 +61,7 @@ export class CommentGateway {
         return { event: "joined", data: { slideId: slideIdStr } };
     }
 
+    @SubscribeMessage("message")
     @SubscribeMessage("createComment")
     async handleCreateMessage(
         @MessageBody() payload: unknown,
@@ -80,34 +78,15 @@ export class CommentGateway {
             };
         }
 
-        // Ensure the slide exists
-        const slide = await this.slideRepository.findOne({
-            where: { id: slideIdStr },
-        });
-        if (!slide) {
-            return { event: "error", data: { message: "Slide not found" } };
-        }
-
-        const saved = await this.commentRepository.save({
+        const job = await this.commentsQueue.add("create", {
             slideId: slideIdStr,
             userId: userIdStr,
             content: contentStr,
         });
 
-        // Broadcast only to the slide-specific room (no global emits by design)
-        this.server.to(`slide:${slideIdStr}`).emit("commentCreated", saved);
-
-        // Respond with a JSON object (validated)
         return {
-            event: "message",
-            data: {
-                id: saved.id,
-                slideId: slideIdStr,
-                userId: userIdStr,
-                content: contentStr,
-                createdAt: saved.createdAt,
-                updatedAt: saved.updatedAt,
-            },
+            event: "queued",
+            data: { action: "create", jobId: job.id, slideId: slideIdStr },
         };
     }
 
@@ -132,49 +111,20 @@ export class CommentGateway {
             };
         }
 
-        // Ensure the slide exists
-        const slide = await this.slideRepository.findOne({
-            where: { id: slideIdStr },
+        const job = await this.commentsQueue.add("update", {
+            slideId: slideIdStr,
+            userId: userIdStr,
+            commentId: commentIdStr,
+            content: contentStr,
         });
-        if (!slide) {
-            return { event: "error", data: { message: "Slide not found" } };
-        }
-
-        // Ensure the comment exists and belongs to the slide
-        const comment = await this.commentRepository.findOne({
-            where: { id: commentIdStr, slideId: slideIdStr },
-        });
-        if (!comment) {
-            return {
-                event: "error",
-                data: { message: "Comment not found" },
-            };
-        }
-
-        // Optional authorization: only the creator can update their comment
-        if (comment.userId !== userIdStr) {
-            return {
-                event: "error",
-                data: { message: "You can only update your own comment" },
-            };
-        }
-
-        // Update and persist
-        comment.content = contentStr;
-        const saved = await this.commentRepository.save(comment);
-
-        // Broadcast only to the slide-specific room (no global emits)
-        this.server.to(`slide:${slideIdStr}`).emit("commentUpdated", saved);
 
         return {
-            event: "message",
+            event: "queued",
             data: {
-                id: saved.id,
-                slideId: saved.slideId,
-                userId: saved.userId,
-                content: saved.content,
-                createdAt: saved.createdAt,
-                updatedAt: saved.updatedAt,
+                action: "update",
+                jobId: job.id,
+                slideId: slideIdStr,
+                commentId: commentIdStr,
             },
         };
     }
@@ -198,49 +148,19 @@ export class CommentGateway {
             };
         }
 
-        // Ensure the slide exists
-        const slide = await this.slideRepository.findOne({
-            where: { id: slideIdStr },
+        const job = await this.commentsQueue.add("delete", {
+            slideId: slideIdStr,
+            userId: userIdStr,
+            commentId: commentIdStr,
         });
-        if (!slide) {
-            return { event: "error", data: { message: "Slide not found" } };
-        }
 
-        // Ensure the comment exists and belongs to the slide
-        const comment = await this.commentRepository.findOne({
-            where: { id: commentIdStr, slideId: slideIdStr },
-        });
-        if (!comment) {
-            return {
-                event: "error",
-                data: { message: "Comment not found" },
-            };
-        }
-
-        // Optional authorization: only the creator can delete their comment
-        if (comment.userId !== userIdStr) {
-            return {
-                event: "error",
-                data: { message: "You can only delete your own comment" },
-            };
-        }
-
-        // Delete the comment
-        await this.commentRepository.delete(commentIdStr);
-
-        // Broadcast only to the slide-specific room (no global emits)
-        this.server
-            .to(`slide:${slideIdStr}`)
-            .emit("commentDeleted", { id: commentIdStr, slideId: slideIdStr });
-
-        // Respond with a JSON object (validated)
         return {
-            event: "message",
+            event: "queued",
             data: {
-                deleted: true,
-                id: commentIdStr,
+                action: "delete",
+                jobId: job.id,
                 slideId: slideIdStr,
-                userId: userIdStr,
+                commentId: commentIdStr,
             },
         };
     }

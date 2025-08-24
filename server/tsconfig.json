@@ -20,7 +20,8 @@
         "typeRoots": [
             "./src/types", // your declaration folder
             "./node_modules/@types" // default types
-        ]
+        ],
+        "types": ["node"]
     },
     "include": [
         "src/**/*.ts", // your source files
