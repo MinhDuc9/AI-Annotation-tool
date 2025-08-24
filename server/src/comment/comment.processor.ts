@@ -33,15 +33,6 @@ export type CommentJobDataMap = {
     delete: DeleteCommentPayload;
 };
 
-export interface CommentOutDTO {
-    id: string;
-    slideId: string;
-    userId: string;
-    content: string;
-    createdAt: Date;
-    updatedAt: Date;
-}
-
 // Type guards for runtime validation & compile-time narrowing
 function isCreatePayload(d: unknown): d is CreateCommentPayload {
     const o = d as Record<string, unknown>;
@@ -120,15 +111,7 @@ export class CommentsProcessor extends WorkerHost {
                     .to(`slide:${data.slideId}`)
                     .emit("commentCreated", saved);
 
-                const out: CommentOutDTO = {
-                    id: saved.id,
-                    slideId: saved.slideId,
-                    userId: saved.userId,
-                    content: saved.content,
-                    createdAt: saved.createdAt,
-                    updatedAt: saved.updatedAt,
-                };
-                return out;
+                return;
             }
 
             case "update": {
@@ -156,16 +139,7 @@ export class CommentsProcessor extends WorkerHost {
                     .to(`slide:${data.slideId}`)
                     .emit("commentUpdated", saved);
 
-                const out: CommentOutDTO = {
-                    id: saved.id,
-                    slideId: saved.slideId,
-                    userId: saved.userId,
-                    content: saved.content,
-                    createdAt: saved.createdAt,
-                    updatedAt: saved.updatedAt,
-                };
-
-                return out;
+                return;
             }
 
             case "delete": {
@@ -198,12 +172,7 @@ export class CommentsProcessor extends WorkerHost {
                         slideId: data.slideId,
                     });
 
-                return {
-                    deleted: true as const,
-                    id: data.commentId,
-                    slideId: data.slideId,
-                    userId: data.userId,
-                };
+                return;
             }
 
             default: {
