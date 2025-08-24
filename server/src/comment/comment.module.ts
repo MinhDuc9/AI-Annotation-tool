@@ -10,6 +10,7 @@ import { CommentsProcessor } from "./comment.processor";
 @Module({
     imports: [
         TypeOrmModule.forFeature([Comment, Slide]),
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         BullModule.registerQueue({ name: "comments" }),
     ],
     providers: [CommentGateway, CommentService, CommentsProcessor],

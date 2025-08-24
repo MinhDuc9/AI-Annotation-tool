@@ -19,6 +19,7 @@ export class CommentGateway {
     @WebSocketServer() server: Server;
 
     constructor(
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
         @InjectQueue("comments")
         private readonly commentsQueue: Queue,
     ) {}
@@ -78,7 +79,8 @@ export class CommentGateway {
             };
         }
 
-        const job = await this.commentsQueue.add("create", {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        await this.commentsQueue.add("create", {
             slideId: slideIdStr,
             userId: userIdStr,
             content: contentStr,
@@ -86,7 +88,7 @@ export class CommentGateway {
 
         return {
             event: "queued",
-            data: { action: "create", jobId: job.id, slideId: slideIdStr },
+            data: { action: "create", slideId: slideIdStr },
         };
     }
 
@@ -111,7 +113,8 @@ export class CommentGateway {
             };
         }
 
-        const job = await this.commentsQueue.add("update", {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        await this.commentsQueue.add("update", {
             slideId: slideIdStr,
             userId: userIdStr,
             commentId: commentIdStr,
@@ -122,7 +125,6 @@ export class CommentGateway {
             event: "queued",
             data: {
                 action: "update",
-                jobId: job.id,
                 slideId: slideIdStr,
                 commentId: commentIdStr,
             },
@@ -148,7 +150,8 @@ export class CommentGateway {
             };
         }
 
-        const job = await this.commentsQueue.add("delete", {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        await this.commentsQueue.add("delete", {
             slideId: slideIdStr,
             userId: userIdStr,
             commentId: commentIdStr,
@@ -158,7 +161,6 @@ export class CommentGateway {
             event: "queued",
             data: {
                 action: "delete",
-                jobId: job.id,
                 slideId: slideIdStr,
                 commentId: commentIdStr,
             },
