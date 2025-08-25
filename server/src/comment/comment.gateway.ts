@@ -19,7 +19,6 @@ export class CommentGateway {
     @WebSocketServer() server: Server;
 
     constructor(
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
         @InjectQueue("comments")
         private readonly commentsQueue: Queue,
     ) {}
@@ -79,7 +78,6 @@ export class CommentGateway {
             };
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         await this.commentsQueue.add("create", {
             slideId: slideIdStr,
             userId: userIdStr,
@@ -113,7 +111,6 @@ export class CommentGateway {
             };
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         await this.commentsQueue.add("update", {
             slideId: slideIdStr,
             userId: userIdStr,
@@ -150,7 +147,6 @@ export class CommentGateway {
             };
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         await this.commentsQueue.add("delete", {
             slideId: slideIdStr,
             userId: userIdStr,

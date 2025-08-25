@@ -57,7 +57,6 @@ function isDeletePayload(d: unknown): d is DeleteCommentPayload {
     );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-call
 @Processor("comments", { concurrency: 20 })
 export class CommentsProcessor extends WorkerHost {
     constructor(
@@ -69,7 +68,6 @@ export class CommentsProcessor extends WorkerHost {
 
         private readonly gateway: CommentGateway,
     ) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
         super();
     }
 
@@ -79,7 +77,6 @@ export class CommentsProcessor extends WorkerHost {
         });
 
         if (!slide) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
             throw new UnrecoverableError("Slide not found");
         }
 
@@ -87,13 +84,10 @@ export class CommentsProcessor extends WorkerHost {
     }
 
     async process(job: Job<unknown>) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         switch (job.name as CommentJobName) {
             case "create": {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 const data = job.data;
                 if (!isCreatePayload(data))
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
                     throw new UnrecoverableError("Invalid create payload");
 
                 await this.ensureSlide(data.slideId);
@@ -112,10 +106,8 @@ export class CommentsProcessor extends WorkerHost {
             }
 
             case "update": {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 const data = job.data;
                 if (!isUpdatePayload(data))
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
                     throw new UnrecoverableError("Invalid update payload");
 
                 await this.ensureSlide(data.slideId);
@@ -124,11 +116,9 @@ export class CommentsProcessor extends WorkerHost {
                     where: { id: data.commentId, slideId: data.slideId },
                 });
                 if (!comment) {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
                     throw new UnrecoverableError("Comment not found");
                 }
                 if (comment.userId !== data.userId) {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
                     throw new UnrecoverableError(
                         "You can only update your own comment",
                     );
@@ -145,10 +135,8 @@ export class CommentsProcessor extends WorkerHost {
             }
 
             case "delete": {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 const data = job.data;
                 if (!isDeletePayload(data)) {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
                     throw new UnrecoverableError("Invalid delete payload");
                 }
 
@@ -159,12 +147,10 @@ export class CommentsProcessor extends WorkerHost {
                 });
 
                 if (!comment) {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
                     throw new UnrecoverableError("Comment not found");
                 }
 
                 if (comment.userId !== data.userId) {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
                     throw new UnrecoverableError(
                         "You can only delete your own comment",
                     );
@@ -183,7 +169,6 @@ export class CommentsProcessor extends WorkerHost {
             }
 
             default: {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
                 throw new UnrecoverableError(`Unknown job name: ${job.name}`);
             }
         }
