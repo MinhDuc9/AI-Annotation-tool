@@ -16,7 +16,7 @@ export class SocketService {
   private socket: Socket;
 
   constructor(private zone: NgZone) {
-    this.socket = io((window as any).env?.WS_URL ?? "http://localhost:3000", {
+    this.socket = io((window as any).env?.WS_URL ?? "http://localhost:8080", {
       transports: ["websocket"],
     });
   }
@@ -33,12 +33,20 @@ export class SocketService {
     return this.fromEventInZone("commentCreated");
   }
 
+  onCommentUpdated(): Observable<CommentDto> {
+    return this.fromEventInZone("commentUpdated");
+  }
+
   onError(): Observable<{ message: string }> {
     return this.fromEventInZone("error");
   }
 
   createComment(slideId: string, userId: string, content: string): void {
     this.socket.emit("createComment", { slideId, userId, content });
+  }
+
+  editComment(slideId: string, userId: string, commentId: string, content: string): void {
+    this.socket.emit("updateComment", { slideId, userId, content, commentId });
   }
 
   disconnect(): void {
