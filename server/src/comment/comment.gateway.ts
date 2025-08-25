@@ -44,7 +44,6 @@ export class CommentGateway {
         return obj;
     }
 
-    @SubscribeMessage("message")
     @SubscribeMessage("joinSlide")
     async handleJoinSlide(
         @MessageBody() payload: unknown,
@@ -61,7 +60,6 @@ export class CommentGateway {
         return { event: "joined", data: { slideId: slideIdStr } };
     }
 
-    @SubscribeMessage("message")
     @SubscribeMessage("createComment")
     async handleCreateMessage(
         @MessageBody() payload: unknown,
