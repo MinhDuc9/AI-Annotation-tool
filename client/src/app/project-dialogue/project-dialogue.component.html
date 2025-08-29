@@ -1,21 +1,97 @@
 <main>
-    <form [formGroup]="projectForm" (ngSubmit)="onSubmit()">
+    <form [formGroup]="projectForm" (ngSubmit)="onSubmit()" (keydown.enter)="$event.preventDefault()">
+    <mat-stepper linear #stepper>
+        <mat-step
+            [stepControl]="projectName()!"
+            errorMessage="Name is required."
+        >
+            <ng-template matStepLabel>Project Name</ng-template>
             <mat-form-field appearance="outline" hideRequiredMarker="true">
-            <mat-label>Project Name</mat-label>
-            <input
-                matInput
-                formControlName="projectName"
-                [errorStateMatcher]="matcher"
-                placeholder="Insert name"
-                required
-            />
-            @if (projectName()?.hasError('required')) {
+                <input
+                    matInput
+                    formControlName="projectName"
+                    [errorStateMatcher]="matcher"
+                    placeholder="Insert name"
+                    required
+                />
+                @if (projectName()?.hasError('required')) {
                 <mat-error>Project name is required</mat-error>
-            }
+                }
             </mat-form-field>
-            
-            <app-file-input [allowMultipleFiles]="false" [allowedTypes]="'.jpeg, .png'" (onfileRemoved)="removeFile($event)" (onfileUploaded)="uploadFile($event)" />
+            <div>
+                <button matButton type="button" (click)="goStep2(stepper)">Next</button>
+            </div>
+        </mat-step>
 
-            <button matButton="filled" type="submit">Login</button>
-        </form>
+        <mat-step
+            formGroupName="authorization"
+            [stepControl]="emails()!"
+            errorMessage="Email format wrong"
+            optional
+        >
+            <ng-template matStepLabel>Authorization</ng-template>
+            <div class="auth-container" style="display: flex; gap: 16px">
+                <div class="emails" style="flex: 1">
+                    <h4>Emails</h4>
+                    @for (emailCtrl of emails().controls; track $index) {
+                    <mat-form-field
+                        appearance="outline"
+                        style="display: block; margin-bottom: 8px"
+                    >
+                        <input
+                            matInput
+                            placeholder="Enter email"
+                            [formControl]="emailCtrl"
+                            [errorStateMatcher]="matcher"
+                        />
+                        @if (emailCtrl.hasError('email')) {
+                        <mat-error>Invalid email format</mat-error>
+                        }
+                    </mat-form-field>
+                    }
+                </div>
+
+                <div class="roles" style="flex: 1">
+                    <h4>Roles</h4>
+                    @for (roleCtrl of roles().controls; track $index) {
+                    <mat-form-field
+                        appearance="outline"
+                        style="display: block; margin-bottom: 8px"
+                    >
+                        <mat-label>Select role</mat-label>
+                        <mat-select [formControl] ="roleCtrl" required="true" >
+                            @for(role of roleChoices; track $index) {
+                            <mat-option [value]="role.value">{{role.roleName}}</mat-option>
+                            }
+                        </mat-select>
+                    </mat-form-field>
+                    }
+                </div>
+            </div>
+            <button matButton="text" type="button" (click)="addEntry()">Add Entry</button>
+            <div>
+                <button matButton matStepperPrevious>Back</button>
+                <button matButton type="button" (click)="goStep3(stepper)">Next</button>
+            </div>
+        </mat-step>
+
+        <mat-step>
+            <ng-template matStepLabel>Upload Images</ng-template>
+                <app-file-input
+                    [allowMultipleFiles]="false"
+                    [allowedTypes]="'.jpeg, .png'"
+                    (onfileRemoved)="removeFile($event)"
+                    (onfileUploaded)="uploadFile($event)"
+                />
+                @if (fileError()) {
+                <mat-error>At least 1 image is required</mat-error>
+                }
+            <div>
+                <button matButton matStepperPrevious>Back</button>
+                <button matButton type="submit">Submit</button>
+            </div>
+        </mat-step>
+    </mat-stepper>
+</form>
+
 </main>
