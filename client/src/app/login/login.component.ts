@@ -72,6 +72,7 @@ export class LoginComponent {
             console.log(token);
             sessionStorage.setItem('email', this.email()?.value!);
             sessionStorage.setItem('token', token);
+            this.authService.setToken(token);
             this.router.navigate(['/']);
             this._snackBar.open('Logged in successfully', 'Close', {
                 duration: 2000,

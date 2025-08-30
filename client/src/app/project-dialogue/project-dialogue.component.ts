@@ -10,6 +10,9 @@ import { ErrorStateMatcher } from '@angular/material/core';
 import { MatStepper, MatStepperModule } from '@angular/material/stepper';
 import { MatSelectModule } from '@angular/material/select';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
+import { SlideService } from '../services/slide.service';
+import { ProjectService } from '../services/project.service';
+import { catchError, throwError } from 'rxjs';
 
 interface Role {
     roleName: string;
@@ -33,7 +36,7 @@ export class ProjectCreationErrorStateMatcher implements ErrorStateMatcher {
         FileInputComponent,
         MatStepperModule,
         MatSelectModule,
-        MatDialogModule
+        // MatDialogModule
     ],
     templateUrl: './project-dialogue.component.html',
     styleUrl: './project-dialogue.component.scss',
@@ -42,13 +45,16 @@ export class ProjectCreationErrorStateMatcher implements ErrorStateMatcher {
 export class ProjectDialogueComponent {
     private _snackBar = inject(MatSnackBar);
     private _formBuilder = inject(FormBuilder);
-    readonly dialogRef = inject(MatDialogRef<ProjectDialogueComponent>);
-    readonly data = inject<String>(MAT_DIALOG_DATA);
-    readonly user_token = model(this.data);
+    private _projectService = inject(ProjectService);
+    private _slideService = inject(SlideService);
+    // readonly dialogRef = inject(MatDialogRef<ProjectDialogueComponent>);
+    // readonly data = inject<String>(MAT_DIALOG_DATA);
+    // readonly user_token = model(this.data);
 
-    onNoClick(): void {
-      this.dialogRef.close();
-    }
+
+    // onNoClick(): void {
+    //     this.dialogRef.close();
+    // }
 
 
     matcher = new ProjectCreationErrorStateMatcher();
@@ -119,10 +125,60 @@ export class ProjectDialogueComponent {
     }
 
     onSubmit() {
+        var projectId = '';
+        var slideIds: string[] = [];
         if (this.projectForm.valid) {
+
+            this._projectService
+                .createProject(this.projectName()?.value as string).pipe(
+                    catchError((err) => {
+                        this._snackBar.open('Something went wrong. Please try again later.', 'Close', {
+                            duration: 3000,
+                        });
+                        return throwError(() => new Error('Something went wrong. Please try again later.'));
+                }))
+                .subscribe((res) => {
+                    console.log(res);
+                    projectId = res.id;
+                    console.log(projectId);
+                });
+
+            if (projectId != '') {
+                this.files.forEach((file) => {
+                this._slideService
+                    .createSlide(projectId).pipe(
+                        catchError((err) => {
+                            this._snackBar.open('Something went wrong. Please try again later.', 'Close', {
+                                duration: 3000,
+                            });
+                            return throwError(() => new Error('Something went wrong. Please try again later.'));
+                    }))
+                    .subscribe((res) => {
+                        slideIds.push(res.id)
+                    });
+            });
+
+            slideIds.forEach((slideId, i) => {
+                var formData = new FormData();
+                formData.append('file', this.files[i]);
+                this._slideService
+                    .updateSlide(projectId, slideId, formData).pipe(
+                        catchError((err) => {
+                            this._snackBar.open('Something went wrong. Please try again later.', 'Close', {
+                                duration: 3000,
+                            });
+                            return throwError(() => new Error('Something went wrong. Please try again later.'));
+                    }))
+                    .subscribe();
+            })
             this._snackBar.open('Project created successfully', 'Close', {
                 duration: 3000,
             });
+
+            }
+
+            
+            
         }
     }
 }
