@@ -1,6 +1,7 @@
 # pipeline.py
 import json
 import cv2
+import uuid
 import numpy as np
 import onnxruntime as ort
 from ultralytics import YOLO
@@ -40,7 +41,6 @@ def _classify_species(bgr_img):
     )
     return {"name": species_name, "color": hex_color}
 
-
 def analyze_image(image_path: str):
     image_cv = cv2.imread(image_path)
     if image_cv is None:
@@ -48,11 +48,13 @@ def analyze_image(image_path: str):
     img_h, img_w = image_cv.shape[:2]
 
     # === 1) Bird detection on full image ===
-    detect_results = yolo_detect([image_path], verbose=False)[0]
+    detect_results = yolo_detect([image_path])[0]
     class_names = yolo_detect.names
     bird_class_id = next(k for k, v in class_names.items() if v.lower() == "bird")
 
-    bird_boxes = []
+    bbox_list = []
+    skeletal_list = []
+
     for idx, box in enumerate(detect_results.boxes):
         if int(box.cls[0]) != bird_class_id:
             continue
@@ -63,76 +65,77 @@ def analyze_image(image_path: str):
 
         bbox_w = x2 - x1
         bbox_h = y2 - y1
-        bbox_json = {
-            "x": x1,
-            "y": y2,           # lower-left y (consistent with original format)
-            "width": bbox_w,
-            "height": bbox_h
-        }
+        bb_id = str(uuid.uuid4())
 
         crop_img = image_cv[y1:y2, x1:x2]
 
-        bird_boxes.append({
-            "id": idx,
-            "bbox": bbox_json,
-            "confidence": float(box.conf[0]),
-            "crop_img": crop_img  # keep temporarily for classification/pose
+        # === Species classification ===
+        if crop_img is None or crop_img.size == 0:
+            species_info = {"name": "", "color": "#000000"}
+        else:
+            species_info = _classify_species(crop_img)
+
+        # Store bbox
+        bbox_list.append({
+            "bb_id": bb_id,
+            "x": float(x1),
+            "y": float(y2),
+            "width": float(bbox_w),
+            "height": float(bbox_h),
+            "species_name": species_info["name"],
+            "colour": species_info["color"]
         })
 
-    # === 2) Species classification & 3) Pose estimation per bird ===
-    for box in bird_boxes:
-        crop_img = box.pop("crop_img", None)  # remove later, not in final output
-        if crop_img is None or crop_img.size == 0:
-            box["species"] = {}
-            box["keypoints"] = []
-            box["skeleton"] = []
-            continue
-
-        # Species classification
-        box["species"] = _classify_species(crop_img)
-
-        # Recover crop's top-left in global coordinates
-        bx = box["bbox"]["x"]
-        by_bottom = box["bbox"]["y"]
-        bw = box["bbox"]["width"]
-        bh = box["bbox"]["height"]
-        by_top = by_bottom - bh  # convert from bottom-y to top-y
-
-        # Run pose model on crop
-        pose_res = pose_model([crop_img], verbose=False)[0]
-
+        # === Pose estimation ===
         keypoints_list = []
-        edges_list = []
+        if crop_img is not None and crop_img.size > 0:
+            by_top = y2 - bbox_h
+            pose_res = pose_model([crop_img])[0]
 
-        if pose_res.keypoints is not None and len(pose_res.keypoints.xy) > 0:
-            if pose_res.boxes is not None and pose_res.boxes.conf is not None and len(pose_res.boxes) > 0:
-                confs = pose_res.boxes.conf.detach().cpu().numpy()
-                det_idx = int(np.argmax(confs))
-            else:
-                det_idx = 0
+            if pose_res.keypoints is not None and len(pose_res.keypoints.xy) > 0:
+                if pose_res.boxes is not None and pose_res.boxes.conf is not None and len(pose_res.boxes) > 0:
+                    confs = pose_res.boxes.conf.detach().cpu().numpy()
+                    det_idx = int(np.argmax(confs))
+                else:
+                    det_idx = 0
 
-            kpts_xy = pose_res.keypoints.xy[det_idx].tolist()
-            kpts_conf = pose_res.keypoints.conf[det_idx].tolist()
+                kpts_xy = pose_res.keypoints.xy[det_idx].tolist()
+                kpts_conf = pose_res.keypoints.conf[det_idx].tolist()
 
-            for k_id, ((kx, ky), kconf) in enumerate(zip(kpts_xy, kpts_conf)):
-                if kconf is None or kconf < 0.6:
-                    continue
-                gx = float(bx + kx)
-                gy = float(by_top + ky)
-                keypoints_list.append({
-                    "id": k_id,
-                    "name": KEYPOINT_NAMES.get(k_id, f"kpt_{k_id}"),
-                    "x": gx,
-                    "y": gy,
-                    "confidence": float(kconf)
-                })
+                kp_map = {}
+                for k_id, ((kx, ky), kconf) in enumerate(zip(kpts_xy, kpts_conf)):
+                    if kconf is None or kconf < 0.6:
+                        continue
+                    kp_uuid = str(uuid.uuid4())
+                    gx = float(x1 + kx)
+                    gy = float(by_top + ky)
+                    kp_map[k_id] = kp_uuid
+                    keypoints_list.append({
+                        "key_id": kp_uuid,
+                        "x": gx,
+                        "y": gy,
+                        "colour": species_info["color"]
+                    })
 
-            available_ids = {kp["id"] for kp in keypoints_list}
-            for (i, j) in SKELETON_EDGES:
-                if i in available_ids and j in available_ids:
-                    edges_list.append({"from": i, "to": j})
+                # link edges
+                for (i, j) in SKELETON_EDGES:
+                    if i in kp_map and j in kp_map:
+                        keypoints_list.append({
+                            "key_id": kp_map[i],
+                            "x": next(kp["x"] for kp in keypoints_list if kp["key_id"] == kp_map[i]),
+                            "y": next(kp["y"] for kp in keypoints_list if kp["key_id"] == kp_map[i]),
+                            "key_point_to": kp_map[j],
+                            "colour": species_info["color"]
+                        })
 
-        box["keypoints"] = keypoints_list
-        box["skeleton"] = edges_list
+        skeletal_list.append({
+            "bb_id": bb_id,
+            "keypoints": keypoints_list
+        })
 
-    return bird_boxes
+    # === Final output ===
+    return {
+        "image_id": str(uuid.uuid4()),
+        "bbox": bbox_list,
+        "skeletal": skeletal_list
+    }
