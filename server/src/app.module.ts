@@ -20,6 +20,7 @@ import { BullModule } from "@nestjs/bullmq";
 import type { BullRootModuleOptions } from "@nestjs/bullmq";
 import type { DynamicModule } from "@nestjs/common";
 import type { RegisterQueueOptions } from "@nestjs/bullmq";
+import { AnalysisModule } from "./analysis/analysis.module";
 
 type BullModuleStatics = {
     forRoot: (options: BullRootModuleOptions) => DynamicModule;
@@ -68,6 +69,7 @@ const TypedBullModule = BullModule as unknown as BullModuleStatics;
         AuthModule,
         SlideModule,
         CommentModule,
+        AnalysisModule,
     ],
     controllers: [AppController],
     providers: [
