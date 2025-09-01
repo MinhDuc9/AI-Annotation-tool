@@ -21,4 +21,12 @@ export class AuthService {
     return token;
   }
 
+  setToken(token: string) {
+    sessionStorage.setItem('token', token);
+  }
+
+  getToken(): string | null {
+    return sessionStorage.getItem('token');
+  }
+
 }
