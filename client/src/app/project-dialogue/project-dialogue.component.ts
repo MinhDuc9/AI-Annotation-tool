@@ -36,7 +36,7 @@ export class ProjectCreationErrorStateMatcher implements ErrorStateMatcher {
         FileInputComponent,
         MatStepperModule,
         MatSelectModule,
-        // MatDialogModule
+        MatDialogModule
     ],
     templateUrl: './project-dialogue.component.html',
     styleUrl: './project-dialogue.component.scss',
@@ -47,15 +47,12 @@ export class ProjectDialogueComponent {
     private _formBuilder = inject(FormBuilder);
     private _projectService = inject(ProjectService);
     private _slideService = inject(SlideService);
-    // readonly dialogRef = inject(MatDialogRef<ProjectDialogueComponent>);
-    // readonly data = inject<String>(MAT_DIALOG_DATA);
-    // readonly user_token = model(this.data);
+    readonly dialogRef = inject(MatDialogRef<ProjectDialogueComponent>);
+    readonly data = inject<String>(MAT_DIALOG_DATA);
 
-
-    // onNoClick(): void {
-    //     this.dialogRef.close();
-    // }
-
+    onNoClick(): void {
+        this.dialogRef.close();
+    }
 
     matcher = new ProjectCreationErrorStateMatcher();
 
@@ -101,13 +98,13 @@ export class ProjectDialogueComponent {
 
     roles() {
         return this.projectForm.get('authorization.roles') as FormArray<
-            FormControl<string | null>
+            FormControl<number | null>
         >;
     }
 
     addEntry() {
         this.emails().push(this._formBuilder.control('', Validators.email));
-        this.roles().push(this._formBuilder.control(''));
+        this.roles().push(this._formBuilder.control(2));
     }
 
     goStep2(stepper: MatStepper) {
@@ -125,60 +122,176 @@ export class ProjectDialogueComponent {
     }
 
     onSubmit() {
-        var projectId = '';
-        var slideIds: string[] = [];
-        if (this.projectForm.valid) {
+        if (this.projectForm.invalid || this.files.length === 0) {
+            this.projectForm.markAllAsTouched();
+            this.fileError.set(this.files.length === 0);
 
-            this._projectService
-                .createProject(this.projectName()?.value as string).pipe(
-                    catchError((err) => {
-                        this._snackBar.open('Something went wrong. Please try again later.', 'Close', {
-                            duration: 3000,
-                        });
-                        return throwError(() => new Error('Something went wrong. Please try again later.'));
-                }))
-                .subscribe((res) => {
-                    console.log(res);
-                    projectId = res.id;
-                    console.log(projectId);
-                });
-
-            if (projectId != '') {
-                this.files.forEach((file) => {
-                this._slideService
-                    .createSlide(projectId).pipe(
-                        catchError((err) => {
-                            this._snackBar.open('Something went wrong. Please try again later.', 'Close', {
-                                duration: 3000,
-                            });
-                            return throwError(() => new Error('Something went wrong. Please try again later.'));
-                    }))
-                    .subscribe((res) => {
-                        slideIds.push(res.id)
-                    });
-            });
-
-            slideIds.forEach((slideId, i) => {
-                var formData = new FormData();
-                formData.append('file', this.files[i]);
-                this._slideService
-                    .updateSlide(projectId, slideId, formData).pipe(
-                        catchError((err) => {
-                            this._snackBar.open('Something went wrong. Please try again later.', 'Close', {
-                                duration: 3000,
-                            });
-                            return throwError(() => new Error('Something went wrong. Please try again later.'));
-                    }))
-                    .subscribe();
-            })
-            this._snackBar.open('Project created successfully', 'Close', {
+            this._snackBar.open('Please complete all required steps', 'Close', {
                 duration: 3000,
             });
-
-            }
-
-            
-            
+            return;
         }
+
+        const projectName = this.projectName()?.value as string;
+        const emails = this.emails().value.filter((e) => !!e);
+        const roles = this.roles().value;
+
+        // Create project
+        this._projectService
+            .createProject(projectName)
+            .pipe(
+                catchError((err) => {
+                    this._snackBar.open(
+                        'Failed to create project. Please try again.',
+                        'Close',
+                        {
+                            duration: 3000,
+                        }
+                    );
+                    return throwError(() => err);
+                })
+            )
+            .subscribe((proj) => {
+                const projectId = proj.id;
+
+                // Step 2: assign roles if provided
+                emails.forEach((email, idx) => {
+                    const role = roles[idx];
+                    if (role === 1) {
+                        this._projectService
+                            .addWriteUser(email!, projectId)
+                            .subscribe();
+                    } else if (role === 2) {
+                        this._projectService
+                            .addReadUser(email!, projectId)
+                            .subscribe();
+                    }
+                });
+
+                // Step 3: create slides for each file
+                this.files.forEach((file) => {
+                    this._slideService
+                        .createSlide(projectId)
+                        .pipe(
+                            catchError((err) => {
+                                this._snackBar.open(
+                                    'Failed to create slide',
+                                    'Close',
+                                    {
+                                        duration: 3000,
+                                    }
+                                );
+                                return throwError(() => err);
+                            })
+                        )
+                        .subscribe((slide) => {
+                            const formData = new FormData();
+                            formData.append('image', file);
+
+                            this._slideService
+                                .updateSlide(projectId, slide.id, formData)
+                                .pipe(
+                                    catchError((err) => {
+                                        this._snackBar.open(
+                                            'Failed to upload image',
+                                            'Close',
+                                            {
+                                                duration: 3000,
+                                            }
+                                        );
+                                        return throwError(() => err);
+                                    })
+                                )
+                                .subscribe();
+                        });
+                });
+
+                this._snackBar.open('Project created successfully', 'Close', {
+                    duration: 3000,
+                });
+            });
+        // var projectId = '';
+        // var slideIds: string[] = [];
+        // if (this.projectForm.valid) {
+        //     this._projectService
+        //         .createProject(this.projectName()?.value as string)
+        //         .pipe(
+        //             catchError((err) => {
+        //                 this._snackBar.open(
+        //                     'Something went wrong. Please try again later.',
+        //                     'Close',
+        //                     {
+        //                         duration: 3000,
+        //                     }
+        //                 );
+        //                 return throwError(
+        //                     () =>
+        //                         new Error(
+        //                             'Something went wrong. Please try again later.'
+        //                         )
+        //                 );
+        //             })
+        //         )
+        //         .subscribe((res) => {
+        //             console.log(res);
+        //             projectId = res.id;
+        //             console.log(projectId);
+        //         });
+
+        //     if (projectId != '') {
+        //         this.files.forEach((file) => {
+        //             this._slideService
+        //                 .createSlide(projectId)
+        //                 .pipe(
+        //                     catchError((err) => {
+        //                         this._snackBar.open(
+        //                             'Something went wrong. Please try again later.',
+        //                             'Close',
+        //                             {
+        //                                 duration: 3000,
+        //                             }
+        //                         );
+        //                         return throwError(
+        //                             () =>
+        //                                 new Error(
+        //                                     'Something went wrong. Please try again later.'
+        //                                 )
+        //                         );
+        //                     })
+        //                 )
+        //                 .subscribe((res) => {
+        //                     slideIds.push(res.id);
+        //                 });
+        //         });
+
+        //         slideIds.forEach((slideId, i) => {
+        //             var formData = new FormData();
+        //             formData.append('file', this.files[i]);
+        //             this._slideService
+        //                 .updateSlide(projectId, slideId, formData)
+        //                 .pipe(
+        //                     catchError((err) => {
+        //                         this._snackBar.open(
+        //                             'Something went wrong. Please try again later.',
+        //                             'Close',
+        //                             {
+        //                                 duration: 3000,
+        //                             }
+        //                         );
+        //                         return throwError(
+        //                             () =>
+        //                                 new Error(
+        //                                     'Something went wrong. Please try again later.'
+        //                                 )
+        //                         );
+        //                     })
+        //                 )
+        //                 .subscribe();
+        //         });
+        //         this._snackBar.open('Project created successfully', 'Close', {
+        //             duration: 3000,
+        //         });
+        //     }
+        // }
     }
 }

@@ -50,12 +50,12 @@ export class ProjectService {
   addWriteUser(userEmail: string, projectId: string) {
     const token = this.auth.getToken();
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
-    return this.http.patch<ProjectResponseDTO>('http://localhost:8080/project/add_write_user/' + userEmail + '/' + projectId, {headers: header});
+    return this.http.patch<ProjectResponseDTO>('http://localhost:8080/project/add_write_user/' + userEmail + '/' + projectId, null, {headers: header});
   }
 
   addReadUser(userEmail: string, projectId: string) {
     const token = this.auth.getToken();
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
-    return this.http.patch<ProjectResponseDTO>('http://localhost:8080/project/add_read_user/' + userEmail + '/' + projectId, {headers: header});
+    return this.http.patch<ProjectResponseDTO>('http://localhost:8080/project/add_read_user/' + userEmail + '/' + projectId, null, {headers: header});
   }
 }

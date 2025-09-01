@@ -30,7 +30,7 @@ export class SlideService {
   createSlide(projectId: string) {
     const token = this.auth.getToken();
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
-    return this.http.post<CreateSlideDTO>('http://localhost:8080/slide/' + projectId, {headers: header});
+    return this.http.post<CreateSlideDTO>('http://localhost:8080/slide/' + projectId, null, {headers: header});
   }
 
   updateSlide(projectId: string, slideId: string, imageFormData: FormData) {
