@@ -1,1 +1,77 @@
-<p>annotation-edit works!</p>,
+<div class="workspace">
+    <header class="topbar">
+        <div class="brand">My Workspace</div>
+    </header>
+
+    <div class="content">
+        <!-- Main edit area (left) -->
+        <main class="panelblock mainblock">
+            <div class="block">
+                <div class="body">
+                    <div class="pbody">
+                        <canvas
+                            #editorCanvas
+                            class="editor-canvas"
+                            (wheel)="handleWheel($event)"
+                            (pointerdown)="onPointerDown($event)"
+                            (pointermove)="onPointerMove($event)"
+                            (pointerup)="onPointerUp($event)"
+                            (pointercancel)="onPointerUp($event)"
+                            (pointerleave)="onPointerUp($event)"
+                        ></canvas>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Sash (resizer) -->
+        <div
+            class="sash"
+            role="separator"
+            aria-orientation="vertical"
+            [attr.aria-valuenow]="sidebarWidth"
+            aria-valuemin="200"
+            aria-valuemax="560"
+            (pointerdown)="startResize($event)"
+        ></div>
+
+        <!-- Sidebar (right) -->
+        <aside class="sidebar" [class.collapsed]="sidebarCollapsed">
+            <div class="sidebar-header" (dblclick)="toggleCollapse()">
+                <div class="title">Sidebar</div>
+                <div class="actions">
+                    <button
+                        type="button"
+                        class="btn"
+                        (click)="toggleCollapse()"
+                    >
+                        {{ sidebarCollapsed ? "Expand" : "Collapse" }}
+                    </button>
+                    <button
+                        type="button"
+                        class="btn"
+                        (click)="resetSidebarWidth()"
+                    >
+                        Reset
+                    </button>
+                </div>
+            </div>
+
+            <div class="sidebar-content">
+                <div class="placeholder">
+                    Tools / Layers / Properties go here...
+                </div>
+            </div>
+        </aside>
+
+        <!-- Expand handle: visible only when sidebar is collapsed -->
+        <button
+            class="expand-handle"
+            *ngIf="sidebarCollapsed"
+            type="button"
+            aria-label="Expand sidebar"
+            (click)="toggleCollapse()"
+            title="Expand sidebar"
+        ></button>
+    </div>
+</div>

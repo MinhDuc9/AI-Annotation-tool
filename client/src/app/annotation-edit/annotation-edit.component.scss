@@ -1,3 +1,199 @@
+/* ===== Root keeps default app background; only canvas area is darker ===== */
 :host {
   display: block;
+  height: 100dvh;
+  background: inherit;
+  color: inherit;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Arial, sans-serif;
 }
+
+/* Custom properties for layout */
+:root, :host {
+  --sidebar-width: 280px;
+  --sidebar-min: 200px;
+  --sidebar-max: 560px;
+}
+
+/* Layout: topbar + content */
+.workspace {
+  display: grid;
+  grid-template-rows: 48px 1fr;
+  height: 100%;
+}
+
+/* Top bar uses default background */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  background: inherit;
+  color: inherit;
+  border-bottom: 1px solid rgba(0,0,0,.12);
+}
+
+/* Content split: main (left) | sash | sidebar (right) */
+.content {
+  display: grid;
+  grid-template-columns: 1fr 6px var(--sidebar-width);
+  min-height: 0;
+  height: 100%;
+  position: relative; /* so expand-handle can position against it */
+}
+
+
+/* Main edit block */
+.panelblock.mainblock {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  background: inherit;
+  color: inherit;
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Workspace/canvas area ONLY: darker background */
+.body {
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  background: #2b2b2b; /* darker workspace */
+  justify-content: center;
+  align-items: center;
+}
+
+.pbody {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex; /* center canvas if not full-bleed */
+  justify-content: center;
+  align-items: center;
+}
+
+/* Canvas sizing; crispness handled in TS */
+.editor-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  background: #1a1b1f; /* "paper" under image */
+  cursor: grab;
+
+  &.grabbing { cursor: grabbing; }
+}
+
+/* ===== Sash (resizer between main & sidebar) ===== */
+.sash {
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+}
+.sash::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, transparent 40%, rgba(0,0,0,.18) 50%, transparent 60%);
+  opacity: .6;
+}
+
+/* ===== Sidebar (right) ===== */
+.sidebar {
+  background: inherit;   /* default app bg */
+  color: inherit;
+  border-left: 1px solid rgba(0,0,0,.12);
+  min-width: var(--sidebar-min);
+  max-width: var(--sidebar-max);
+  overflow: hidden; /* we manage scroll inside content */
+  display: grid;
+  grid-template-rows: auto 1fr;
+
+  &.collapsed {
+    width: 0 !important;
+    min-width: 0 !important;
+    border-left: none;
+  }
+}
+
+/* Sidebar header at the top (your request) */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background: inherit; /* keep default */
+  border-bottom: 1px solid rgba(0,0,0,.12);
+  user-select: none;
+  /* Hint: double-click header toggles collapse (wired in TS) */
+
+  .title {
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+
+  .actions {
+    display: inline-flex;
+    gap: 6px;
+
+    .btn {
+      border: 1px solid rgba(0,0,0,.18);
+      background: transparent;
+      color: inherit;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .btn:hover {
+      background: rgba(0,0,0,.06);
+    }
+  }
+}
+
+/* Scrollable content inside the sidebar */
+.sidebar-content {
+  overflow: auto;
+  padding: 12px;
+
+  .placeholder {
+    opacity: 0.7;
+    font-size: 13px;
+  }
+}
+
+/* Expand handle: shows when sidebar is collapsed */
+.expand-handle {
+  position: absolute;
+  top: 50%;
+  right: 0;                /* stick to the right edge */
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 20px;
+  height: 48px;
+  border-radius: 8px 0 0 8px;
+  border: 1px solid rgba(0,0,0,.18);
+  background: rgba(0,0,0,.05);
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+
+  &:hover {
+    background: rgba(0,0,0,.1);
+  }
+}
+
+/* Thin scrollbars (optional) */
+* { scrollbar-width: thin; }
