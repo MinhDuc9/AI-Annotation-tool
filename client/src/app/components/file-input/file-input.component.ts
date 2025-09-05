@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, EventEmitter, HostListener, input, 
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';import { FileDropDirective } from './file-drop.directive';
+import { MatCardModule } from '@angular/material/card';
+import { DecimalPipe } from '@angular/common';
 ;
 
 export enum IncorrectFileInput{
@@ -12,7 +14,7 @@ export enum IncorrectFileInput{
 
 @Component({
   selector: 'app-file-input',
-  imports: [MatInputModule, MatButtonModule, MatIconModule, FileDropDirective],
+  imports: [MatInputModule, MatButtonModule, MatIconModule, FileDropDirective, MatCardModule, DecimalPipe],
   templateUrl: './file-input.component.html',
   styleUrl: './file-input.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -30,7 +32,7 @@ export class FileInputComponent implements OnInit {
 
   allowedTypesList: string[] = []
 
-  label = signal("")
+  label = input("")
   incorrectInput = signal(IncorrectFileInput.None)
 
 
@@ -39,7 +41,6 @@ export class FileInputComponent implements OnInit {
   }
 
   fileInserted(event: any) {
-    this.label.set('')
     if (event?.target?.files.length === 0) {
       return;
     }else{

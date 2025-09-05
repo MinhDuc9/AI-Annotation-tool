@@ -1,8 +1,9 @@
+import { NgIf } from '@angular/common';
 import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, HostListener, ViewChild } from '@angular/core';
 
 @Component({
   selector: 'app-annotation-edit',
-  imports: [],
+  imports: [NgIf],
   templateUrl: './annotation-edit.component.html',
   styleUrl: './annotation-edit.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

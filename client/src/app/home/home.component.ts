@@ -5,35 +5,38 @@ import { MatDialog } from '@angular/material/dialog';
 import { ProjectDialogueComponent } from '../project-dialogue/project-dialogue.component';
 
 @Component({
-  selector: 'app-home',
-  imports: [],
-  templateUrl: './home.component.html',
-  styleUrl: './home.component.scss',
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-home',
+    imports: [],
+    templateUrl: './home.component.html',
+    styleUrl: './home.component.scss',
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HomeComponent implements OnInit {
+    username = signal(sessionStorage.getItem('username') || '');
 
-  username = signal(sessionStorage.getItem('username') || '');
+    userService = inject(UserService);
 
-  userService = inject(UserService);
+    router = inject(Router);
 
-  router = inject(Router);
+    readonly dialog = inject(MatDialog);
 
-  readonly dialog = inject(MatDialog);
-
-  openDialog(): void {
-    const dialogRef = this.dialog.open(ProjectDialogueComponent, {});
-  }
-
-
-  ngOnInit(): void { 
-    if (!sessionStorage.getItem('token')) {
-      this.router.navigate(['/login']);
+    openDialog(): void {
+        const dialogRef = this.dialog.open(ProjectDialogueComponent, {
+            width: '40vw',
+            maxWidth: '80vw', // override the 80vw default cap
+            // height: 'auto',
+            maxHeight: '90vh',
+            panelClass: 'dlg-xl', // optional (see B)
+        });
     }
-  }
 
-  getUsers() {
-    this.userService.getUsers().subscribe((users) => console.log(users));
-  }
+    ngOnInit(): void {
+        if (!sessionStorage.getItem('token')) {
+            this.router.navigate(['/login']);
+        }
+    }
 
+    getUsers() {
+        this.userService.getUsers().subscribe((users) => console.log(users));
+    }
 }

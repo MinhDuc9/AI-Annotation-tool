@@ -1,4 +1,40 @@
-:host {
-  display: block;
-}
+:host { display: block; }
 
+.pd {
+  &__title { display: grid; gap: 4px; }
+  &__title-sub {
+    display: block;
+    font-weight: 400;
+    font-size: 0.95rem;
+    color: var(--mat-sys-on-surface-variant);
+    margin-top: 2px;
+  }
+
+  &__stepper { --_mat-stepper-header-height: 44px; }
+
+  &__section { padding-block: 8px 12px; }
+  &__field { width: 100%; }
+
+  /* Authorization heading/description */
+  &__headerline { display: grid; gap: 2px; }
+
+  /* Row-aligned pairs (email <-> role) */
+  &__grid-rows { display: grid; gap: 12px; }
+  &__rowline { display: grid; gap: 12px; grid-template-columns: 1fr; }
+  @media (min-width: 720px) {
+    &__rowline { grid-template-columns: 2fr 1fr; }
+  }
+  &__email, &__role { width: 100%; }
+
+  &__row-actions { margin-top: 6px; }
+
+  /* Action bars: back stays compact; primary aligned right */
+  &__actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 12px;
+  }
+  &__primary { margin-left: auto; }
+
+  &__inline-error { margin-top: 6px; }
+}
