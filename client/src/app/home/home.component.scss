@@ -1,3 +1,83 @@
 :host {
   display: block;
 }
+
+/* Responsive, modern CSS Grid layout for cards */
+.pc-grid {
+  display: grid;
+  gap: 30px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+/* Card block */
+.pc {
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--mat-sys-surface);
+}
+
+/* Media area: consistent aspect ratio, cover any image */
+.pc .mat-mdc-card-image {
+  display: block;
+  width: 100%;
+  /* Force a consistent frame and crop */
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  /* Nice neutral backdrop while loading / for placeholders */
+  background: var(--mat-sys-surface-container-low);
+  /* Optional: neutralize any default margins */
+  margin: 0;
+}
+
+/* Footer with project name + role pill */
+.pc__footer {
+  padding: 8px 12px;
+  border-top: 1px solid color-mix(in oklab, var(--mat-sys-outline) 55%, transparent);
+}
+
+.pc__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pc__title {
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Role pill styled with Material 3 tokens */
+.pc__role {
+  --pill-bg: var(--mat-sys-surface-container-high);
+  --pill-fg: var(--mat-sys-on-surface-variant);
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 20px;
+  background: var(--pill-bg);
+  color: var(--pill-fg);
+  white-space: nowrap;
+  user-select: none;
+
+  &.pc__role--admin { --pill-bg: var(--mat-sys-primary);   --pill-fg: var(--mat-sys-on-primary); }
+  &.pc__role--write { --pill-bg: var(--mat-sys-tertiary);  --pill-fg: var(--mat-sys-on-tertiary); }
+  &.pc__role--read  { --pill-bg: var(--mat-sys-secondary); --pill-fg: var(--mat-sys-on-secondary); }
+}
+
+.pc-toolbar {
+  display: flex;
+  justify-content: flex-start; 
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+
+  /* optional: make the toolbar pop slightly from content */
+  /* padding-bottom: 4px; 
+     border-bottom: 1px solid color-mix(in oklab, var(--mat-sys-outline) 55%, transparent); */
+}

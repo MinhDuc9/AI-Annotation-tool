@@ -16,6 +16,11 @@ export interface UpdateSlideDTO {
   imageRoute: string
 }
 
+export interface getSlidesDTO {
+  id: string;
+  projectId: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -37,6 +42,18 @@ export class SlideService {
     const token = this.auth.getToken();
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
     return this.http.patch<UpdateSlideDTO>('http://localhost:8080/slide/' + projectId + '/' + slideId, imageFormData, {headers: header});
+  }
+
+  getSlides(projectId: string) {
+    const token = this.auth.getToken();
+    const header = new HttpHeaders().set("Authorization", "Bearer " + token);
+    return this.http.get<UpdateSlideDTO[]>('http://localhost:8080/slide/get_all/' + projectId, {headers: header});
+  }
+
+  getImage(slideId: string) {
+    const token = this.auth.getToken();
+    const header = new HttpHeaders().set("Authorization", "Bearer " + token);
+    return this.http.get('http://localhost:8080/slide/image/' + slideId, {headers: header, responseType: 'blob', observe: 'response'});
   }
 
 }

@@ -1,5 +1,24 @@
-<p>Hello {{username()}}!</p>
+<div class="pc-toolbar">
+    <button mat-stroked-button type="button" (click)="openDialog()">Add Project</button>
+</div>
+<div class="pc-grid">
+    @for (c of cards(); track c.id) {
+    <mat-card class="pc" appearance="outlined">
+        <img matCardImage src="placeholder.svg" [attr.src]="c.imgUrl || null"
+            (error)="onImgError($event)"
+            [alt]="c.name + ' - first slide image'" loading="lazy" />
 
-<button (click) = "getUsers()">Console Log (Get All Users)</button>
-
-<button (click) = "openDialog()">Open Project Dialogue</button>
+        <mat-card-footer class="pc__footer">
+            <div class="pc__meta">
+                <div class="pc__title" [title]="c.name">{{ c.name }}</div>
+                <span class="pc__role" [class.pc__role--admin]="c.role==='admin'"
+                    [class.pc__role--write]="c.role==='write'" [class.pc__role--read]="c.role==='read'">
+                    {{ c.role | titlecase }}
+                </span>
+            </div>
+        </mat-card-footer>
+    </mat-card>
+    } @empty {
+    <div class="pc__empty">No projects yet</div>
+    }
+</div>

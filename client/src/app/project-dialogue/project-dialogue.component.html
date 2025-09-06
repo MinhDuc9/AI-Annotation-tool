@@ -183,7 +183,7 @@
 
                 <section class="pd__section">
                     <app-file-input [label]="'Upload image files for the slides'" [allowMultipleFiles]="true"
-                        [allowedTypes]="'.jpeg, .png'" (onfileRemoved)="removeFile($event)"
+                        [allowedTypes]="'.jpg, .png'" (onfileRemoved)="removeFile($event)"
                         (onfileUploaded)="uploadFile($event)" />
                     @if (fileError()) {
                     <mat-error class="pd__inline-error">At least 1 image is required</mat-error>
