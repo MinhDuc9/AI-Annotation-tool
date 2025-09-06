@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal, WritableSignal, type OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, inject, signal, WritableSignal, type OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { UserService } from '../services/user.service';
 import { MatDialog } from '@angular/material/dialog';
@@ -9,6 +9,7 @@ import { MatCardImage, MatCardModule } from "@angular/material/card";
 import { catchError, forkJoin, map, of, switchMap } from 'rxjs';
 import { TitleCasePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
+import { SidebarComponent } from '../sidebar/sidebar.component';
 
 interface ProjectCardVM {
   id: string;
@@ -20,12 +21,13 @@ interface ProjectCardVM {
 
 @Component({
     selector: 'app-home',
-    imports: [MatCardModule, TitleCasePipe, MatButtonModule],
+    imports: [MatCardModule, TitleCasePipe, MatButtonModule, SidebarComponent],
     templateUrl: './home.component.html',
     styleUrl: './home.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HomeComponent implements OnInit {
+
     username = signal(sessionStorage.getItem('username') || '');
 
     userService = inject(UserService);
@@ -55,9 +57,29 @@ export class HomeComponent implements OnInit {
         });
     }
 
+    isLeftSidebarCollapsed = signal<boolean>(false);
+    screenWidth = signal<number>(window.innerWidth);
+
+    @HostListener('window:resize')
+    onResize() {
+      this.screenWidth.set(window.innerWidth);
+      if (this.screenWidth() < 768) {
+        this.isLeftSidebarCollapsed.set(true);
+      }
+    }
+
+    changeIsLeftSidebarCollapsed(isLeftSidebarCollapsed: boolean): void {
+      this.isLeftSidebarCollapsed.set(isLeftSidebarCollapsed);
+    }
+
     ngOnInit(): void {
         if (!sessionStorage.getItem('token')) {
             this.router.navigate(['/login']);
+        }
+
+        this.isLeftSidebarCollapsed.set(this.screenWidth() < 768);
+        if (!sessionStorage.getItem('token')) {
+          this.router.navigate(['/login']);
         }
 
         this.load();
