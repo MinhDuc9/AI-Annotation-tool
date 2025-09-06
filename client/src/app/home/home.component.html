@@ -5,7 +5,7 @@
 </div>
 <div class="pc-grid">
     @for (c of cards(); track c.id) {
-    <mat-card class="pc" appearance="outlined">
+    <mat-card class="pc" appearance="outlined" (click)="this.router.navigate(['/annotate', c.id])">
         <!-- Media -->
         @if (c.imgUrl) {
         <!-- real image only when we have a URL -->
