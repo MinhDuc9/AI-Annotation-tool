@@ -3,7 +3,7 @@
 </div>
 <div class="pc-grid">
     @for (c of cards(); track c.id) {
-    <mat-card class="pc" appearance="outlined">
+    <mat-card class="pc" appearance="outlined" (click)="this.router.navigate(['/annotate', c.id])">
         <img matCardImage src="placeholder.svg" [attr.src]="c.imgUrl || null"
             (error)="onImgError($event)"
             [alt]="c.name + ' - first slide image'" loading="lazy" />

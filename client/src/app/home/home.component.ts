@@ -49,6 +49,10 @@ export class HomeComponent implements OnInit {
             maxHeight: '90vh',
             panelClass: 'dlg-xl', // optional (see B)
         });
+
+        dialogRef.afterClosed().subscribe((result) => {
+            this.load();
+        });
     }
 
     ngOnInit(): void {
