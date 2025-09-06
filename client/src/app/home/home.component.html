@@ -1,18 +1,36 @@
 <div class="pc-toolbar">
-    <button mat-stroked-button type="button" (click)="openDialog()">Add Project</button>
+    <button mat-stroked-button type="button" (click)="openDialog()">
+        Add Project
+    </button>
 </div>
 <div class="pc-grid">
     @for (c of cards(); track c.id) {
-    <mat-card class="pc" appearance="outlined" (click)="this.router.navigate(['/annotate', c.id])">
-        <img matCardImage src="placeholder.svg" [attr.src]="c.imgUrl || null"
+    <mat-card class="pc" appearance="outlined">
+        <!-- Media -->
+        @if (c.imgUrl) {
+        <!-- real image only when we have a URL -->
+        <img
+            mat-card-image
+            [src]="c.imgUrl"
+            [alt]="c.name + ' - first slide image'"
+            loading="lazy"
             (error)="onImgError($event)"
-            [alt]="c.name + ' - first slide image'" loading="lazy" />
+        />
+        } 
+        @else {
+        <!-- lightweight skeleton that reserves space -->
+        <div class="pc__skeleton" aria-hidden="true"></div>
+        }
 
         <mat-card-footer class="pc__footer">
             <div class="pc__meta">
                 <div class="pc__title" [title]="c.name">{{ c.name }}</div>
-                <span class="pc__role" [class.pc__role--admin]="c.role==='admin'"
-                    [class.pc__role--write]="c.role==='write'" [class.pc__role--read]="c.role==='read'">
+                <span
+                    class="pc__role"
+                    [class.pc__role--admin]="c.role === 'admin'"
+                    [class.pc__role--write]="c.role === 'write'"
+                    [class.pc__role--read]="c.role === 'read'"
+                >
                     {{ c.role | titlecase }}
                 </span>
             </div>
