@@ -1,5 +1,5 @@
 .sidenav {
-  background: #012a5b;
+  background: #41b565;
   transition: all 0.5s ease;
   position: fixed;
   z-index: 1;
@@ -79,9 +79,15 @@
   text-align: center;
   padding: 12px;
 }
-.sidenav-nav .sidenav-nav-item .sidenav-nav-link .sidenav-link-text {
+.sidenav-nav .sidenav-nav-item .sidenav-link-text {
   margin-left: 1.5rem;
+
 }
+
+.sidenav-nav-link {
+  text-align: center;
+}
+
 .sidenav-nav .sidenav-nav-item:hover .sidenav-nav-link {
   background-color: #fff;
   color: #000;

@@ -10,17 +10,20 @@ import { RouterModule } from '@angular/router';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SidebarComponent {
+  // Code taken from
+  // https://www.youtube.com/watch?v=ZRtVGFtIUjs&t=856s&pp=ygUPYW5ndWxhciBzaWRlYmFy
+  // and modified to suit the application
   isLeftSidebarCollapsed = input.required<boolean>();
   changeIsLeftSidebarCollapsed = output<boolean>();
   items = [
     {
       routeLink: 'dashboard',
-      icon: 'fal fa-home',
+      icon: 'fa fa-home',
       label: 'Dashboard',
     },
     {
-      routeLink: 'products',
-      icon: 'fal fa-box-open',
+      routeLink: 'new project',
+      icon: 'fa fa-plus-circle',
       label: 'Products',
     },
   ];
