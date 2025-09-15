@@ -91,17 +91,3 @@ pids/
 # sqlite database files
 *.sqlite
 *.sqlite3
-
-# ------------------------
-# Miscellaneous
-# ------------------------
-# Docker
-docker-compose.override.yml
-**/Dockerfile*
-# Kubernetes
-*.kube/
-# OS-generated
-*.swp
-*.swo
-*.bak
-*.tmp

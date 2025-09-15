@@ -1,0 +1,48 @@
+<div class="input-area">
+    <div class="file-drop" draggable="false" appFileDrop (fileDrop)="uploadFile($event)">
+    <input
+        type="file"
+        (change)="fileInserted($event)"
+        [multiple]="allowMultipleFiles()"
+        [accept]="allowedTypes()"
+        #fileInput
+    />
+
+    <div class="input-label">
+    <label for="fileInput">{{ label().length > 0 ? label() : 'Drop a file here'}}</label>
+    <span class = "divider-label"><div class="divider"></div> or <div class="divider"></div></span>
+    <button matButton="filled" type="button" (click)="fileInput.click()">Browse</button>
+    </div>
+
+    @switch (incorrectInput()) {
+        @case (IncorrectFileInput.IncorrectExtension){
+            <mat-error>Incorrect file extension</mat-error>
+        }
+        @case (IncorrectFileInput.MultipleFiles){
+            <mat-error>Multiple files are not allowed</mat-error>
+        }
+        @default {
+            <mat-error></mat-error>
+        }
+    }
+    </div>
+
+    @if(uploadedFiles.length > 0) {
+        <div class="file-list">
+            <h3>Uploaded files</h3>
+            @for (file of uploadedFiles; track $index; let i = $index){
+                <div class="file-item">
+                    <div class="file-name">
+                        <span>{{file.name}}</span>
+                        <button matIconButton type="button" (click)="removeFile(i)">
+                            <mat-icon>close</mat-icon>
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+
+

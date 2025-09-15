@@ -6,6 +6,7 @@ import {
     Index,
     JoinColumn,
     CreateDateColumn,
+    UpdateDateColumn,
 } from "typeorm";
 import { Slide } from "src/slide/entities/slide.entity";
 
@@ -26,6 +27,9 @@ export class Comment {
 
     @CreateDateColumn({ type: "timestamptz" })
     createdAt: Date;
+
+    @UpdateDateColumn({ type: "timestamptz" })
+    updatedAt: Date;
 
     @ManyToOne(() => Slide, (slide) => slide.comments, {
         onDelete: "CASCADE",
