@@ -14,6 +14,23 @@ import { ProjectUserRole } from "./project-user-role/entities/project-user-role.
 import { ProjectUserRoleModule } from "./project-user-role/project-user-role.module";
 import { SlideModule } from "./slide/slide.module";
 import { Slide } from "./slide/entities/slide.entity";
+import { CommentModule } from "./comment/comment.module";
+import { Comment } from "./comment/entities/comment.entity";
+import { BullModule } from "@nestjs/bullmq";
+import type { BullRootModuleOptions } from "@nestjs/bullmq";
+import type { DynamicModule } from "@nestjs/common";
+import type { RegisterQueueOptions } from "@nestjs/bullmq";
+
+type BullModuleStatics = {
+    forRoot: (options: BullRootModuleOptions) => DynamicModule;
+    forRootAsync: (options: {
+        imports?: any[];
+        inject?: any[];
+        useFactory: (...args: any[]) => BullRootModuleOptions;
+    }) => DynamicModule;
+    registerQueue: (...options: RegisterQueueOptions[]) => DynamicModule;
+};
+const TypedBullModule = BullModule as unknown as BullModuleStatics;
 
 @Module({
     imports: [
@@ -28,16 +45,29 @@ import { Slide } from "./slide/entities/slide.entity";
                 username: config.get<string>("USER_NAME"),
                 password: config.get<string>("DATABASE_PASS"),
                 database: config.get<string>("DATABASE"),
-                entities: [User, Project, ProjectUserRole, Slide],
+                entities: [User, Project, ProjectUserRole, Slide, Comment],
                 synchronize: true,
                 logging: true,
             }),
         }),
+        TypedBullModule.forRootAsync({
+            imports: [ConfigModule],
+            inject: [ConfigService],
+            useFactory: (config: ConfigService): BullRootModuleOptions => ({
+                connection: {
+                    host: config.get<string>("REDIS_HOST") ?? "127.0.0.1",
+                    port: Number(config.get<string>("REDIS_PORT") ?? 6379),
+                    // password: config.get<string>("REDIS_PASSWORD"),
+                },
+            }),
+        }),
+        TypedBullModule.registerQueue({ name: "comments" }),
         UserModule,
         ProjectModule,
         ProjectUserRoleModule,
         AuthModule,
         SlideModule,
+        CommentModule,
     ],
     controllers: [AppController],
     providers: [

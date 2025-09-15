@@ -32,9 +32,14 @@ export class SlideController {
         return this.slideService.findAll(projectId);
     }
 
-    @Get(":slide_id")
+    @Get("image/:slide_id")
     findOne(@Param("slide_id") slideId: string) {
-        return this.slideService.findOne(slideId);
+        return this.slideService.findOneWithImage(slideId);
+    }
+
+    @Get("comments/:slide_id")
+    findOneComments(@Param("slide_id") slideId: string) {
+        return this.slideService.findOneWithComments(slideId);
     }
 
     @Patch(":project_id/:slide_id")

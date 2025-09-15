@@ -1,2 +1,4 @@
-ignoredBuiltDependencies:
+onlyBuiltDependencies:
   - '@nestjs/core'
+  - '@swc/core'
+  - msgpackr-extract
