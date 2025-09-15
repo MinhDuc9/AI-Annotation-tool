@@ -205,7 +205,7 @@ export class ProjectDialogueComponent {
                                 .subscribe();
                         });
                 });
-
+                this.dialogRef.close(true);
                 this._snackBar.open('Project created successfully', 'Close', {
                     duration: 3000,
                 });

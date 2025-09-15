@@ -45,7 +45,7 @@ export class AnnotationEditComponent implements AfterViewInit{
 
     // Initial canvas size & draw
     this.resizeCanvas();
-    this.img.src = 'S1_CS_10.jpg';
+    this.img.src = 'Bird Imagejpg.jpg';
     this.img.onload = () => {
       // Center the image once on first load
       this.centerImage();

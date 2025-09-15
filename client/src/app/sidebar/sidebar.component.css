@@ -49,6 +49,46 @@
   font-size: 24px;
 }
 
+/* Space the button away from the top logo/header */
+.add-container {
+  margin-top: 12px;                 /* <-- gap from the top */
+  padding: 0 0.938rem;              /* match your sidebar horizontal padding */
+}
+
+/* Bigger pill button, perfectly centered content */
+.add-btn {
+  width: 100%;
+  height: 48px;                     /* bigger overall */
+  display: inline-flex;
+  align-items: center;              /* vertical centering of icon + text */
+  justify-content: center;          /* horizontal centering of icon + text */
+  gap: 10px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+
+/* Keep the Material icon from sitting high/low */
+.add-btn .mat-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* Nice in collapsed mode (icon-only) */
+.sidenav-collapsed .add-container {
+  padding: 0 0.938rem;
+}
+
+.sidenav-collapsed .add-btn {
+  width: 3rem;
+  min-width: 3rem;
+  height: 3rem;
+  border-radius: 12px;
+  padding: 0;
+  justify-content: center;
+}
+
 .sidenav-nav {
   list-style: none;
   padding: 0.938rem;
@@ -99,4 +139,42 @@
 .active .sidenav-link-icon,
 .active .sidenav-link-text {
   color: #000;
+}
+
+/* 1) Normalize the icon box */
+.sidenav-nav .sidenav-nav-item .sidenav-nav-link .sidenav-link-icon {
+  width: 2rem;
+  min-width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+
+  /* Keep the icon visually centered in the 5rem rail:
+     (5rem - 2rem)/2 - 0.938rem = 0.562rem */
+  margin-left: 0.562rem;
+}
+
+/* 2) Keep layout consistent (don't center the whole link) */
+.sidenav-nav .sidenav-nav-item .sidenav-nav-link {
+  display: flex;
+  align-items: center;
+  height: 3rem;
+  justify-content: flex-start;
+  padding: 0; /* avoids side drift */
+}
+
+/* 3) Only hide the label when collapsed so the icon doesn't jump */
+.sidenav-collapsed .sidenav-link-text {
+  display: none;
+}
+
+/* IMPORTANT: undo any previous collapsed centering of the link */
+.sidenav-collapsed .sidenav-nav .sidenav-nav-link {
+  width: 100%;
+  height: 3rem;
+  margin: 0;            /* no auto-centering */
+  justify-content: flex-start;
 }

@@ -14,6 +14,12 @@
       </div>
     }
   </div>
+    <div class="add-container">
+    <button mat-flat-button color="primary" class="add-btn" type="button" (click)="openDialog()">
+      <mat-icon>add</mat-icon>
+      @if (!isLeftSidebarCollapsed()) { <span>Add Project</span> }
+    </button>
+  </div>
   <div class="sidenav-nav">
     @for (item of items; track $index) {
       <li class="sidenav-nav-item">

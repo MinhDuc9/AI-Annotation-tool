@@ -38,24 +38,8 @@ export class HomeComponent implements OnInit {
 
     private slideService = inject(SlideService);
 
-    readonly dialog = inject(MatDialog);
-
     cards: WritableSignal<ProjectCardVM[]> = signal([]);
     private objectUrls: string[] = [];
-
-    openDialog(): void {
-        const dialogRef = this.dialog.open(ProjectDialogueComponent, {
-            width: '960px',
-            maxWidth: '80vw', // override the 80vw default cap
-            // height: 'auto',
-            maxHeight: '90vh',
-            panelClass: 'dlg-xl', // optional (see B)
-        });
-
-        dialogRef.afterClosed().subscribe((result) => {
-            this.load();
-        });
-    }
 
     isLeftSidebarCollapsed = signal<boolean>(false);
     screenWidth = signal<number>(window.innerWidth);
@@ -171,5 +155,11 @@ export class HomeComponent implements OnInit {
         // Revoke any created Object URLs to avoid leaks
         for (const u of this.objectUrls) URL.revokeObjectURL(u);
         this.objectUrls = [];
+    }
+
+    projectCreated(created: boolean) {
+      if (created){
+        this.load();
+      }
     }
 }
