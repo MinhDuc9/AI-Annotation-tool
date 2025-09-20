@@ -1,77 +1,110 @@
-<div class="workspace">
-    <header class="topbar">
-        <div class="brand">My Workspace</div>
-    </header>
+<!-- No top toolbar anymore -->
 
-    <div class="content">
-        <!-- Main edit area (left) -->
-        <main class="panelblock mainblock">
-            <div class="block">
-                <div class="body">
-                    <div class="pbody">
-                        <canvas
-                            #editorCanvas
-                            class="editor-canvas"
-                            (wheel)="handleWheel($event)"
-                            (pointerdown)="onPointerDown($event)"
-                            (pointermove)="onPointerMove($event)"
-                            (pointerup)="onPointerUp($event)"
-                            (pointercancel)="onPointerUp($event)"
-                            (pointerleave)="onPointerUp($event)"
-                        ></canvas>
-                    </div>
-                </div>
-            </div>
-        </main>
-
-        <!-- Sash (resizer) -->
-        <div
-            class="sash"
-            role="separator"
-            aria-orientation="vertical"
-            [attr.aria-valuenow]="sidebarWidth"
-            aria-valuemin="200"
-            aria-valuemax="560"
-            (pointerdown)="startResize($event)"
-        ></div>
-
-        <!-- Sidebar (right) -->
-        <aside class="sidebar" [class.collapsed]="sidebarCollapsed">
-            <div class="sidebar-header" (dblclick)="toggleCollapse()">
-                <div class="title">Sidebar</div>
-                <div class="actions">
-                    <button
-                        type="button"
-                        class="btn"
-                        (click)="toggleCollapse()"
-                    >
-                        {{ sidebarCollapsed ? "Expand" : "Collapse" }}
-                    </button>
-                    <button
-                        type="button"
-                        class="btn"
-                        (click)="resetSidebarWidth()"
-                    >
-                        Reset
-                    </button>
-                </div>
-            </div>
-
-            <div class="sidebar-content">
-                <div class="placeholder">
-                    Tools / Layers / Properties go here...
-                </div>
-            </div>
-        </aside>
-
-        <!-- Expand handle: visible only when sidebar is collapsed -->
-        <button
-            class="expand-handle"
-            *ngIf="sidebarCollapsed"
-            type="button"
-            aria-label="Expand sidebar"
-            (click)="toggleCollapse()"
-            title="Expand sidebar"
-        ></button>
+<mat-sidenav-container class="layout">
+  <!-- Right sidebar with annotations & controls -->
+  <mat-sidenav #sidenav position="end" mode="side" [(opened)]="sidenavOpen" class="sidenav">
+    <div class="sidenav-header">
+      <h3>Annotations</h3>
+      <div class="spacer"></div>
+      <input type="file" hidden #fileChooser accept="image/*" (change)="onChooseImage($event)">
+      <button mat-icon-button (click)="fileChooser.click()" matTooltip="Load Image"><mat-icon>image</mat-icon></button>
+      <button mat-icon-button (click)="onExport()" matTooltip="Export JSON"><mat-icon>download</mat-icon></button>
+      <button mat-icon-button (click)="onClear()" matTooltip="Clear"><mat-icon>delete_sweep</mat-icon></button>
+      <button mat-icon-button (click)="sidenavOpen = false" matTooltip="Close"><mat-icon>chevron_right</mat-icon></button>
     </div>
-</div>
+
+    <div class="side-section">
+      <div class="field">
+        <label>Active Label</label>
+        <mat-select [value]="activeLabelId()" (valueChange)="activeLabelId.set($event)">
+          @for (l of labels(); track l.id) {
+            <mat-option [value]="l.id">
+              <span class="label-swatch" [style.background]="l.color ?? '#ff8c00'"></span>
+              {{ l.name }}
+            </mat-option>
+          }
+        </mat-select>
+      </div>
+      <div class="field">
+        <label>Active Color</label>
+        <input type="color" class="color-input" [value]="activeColor()">
+      </div>
+    </div>
+
+    <h4 class="section">Boxes</h4>
+    <div class="list">
+      @if (boxes().length === 0) {
+        <div class="empty">No boxes yet</div>
+      } @else {
+        @for (b of boxes(); track b.id) {
+          <div class="row" [class.active]="isSelected('box', b.id)" (click)="selectEntity('box', b.id)">
+            <span class="sw" [style.background]="b.color"></span>
+            <span class="name">{{ labelName(b.labelId) }} #{{ b.id }}</span>
+            <span class="meta">{{ b.w | number:'1.0-0' }}×{{ b.h | number:'1.0-0' }}</span>
+          </div>
+        }
+      }
+    </div>
+
+    <h4 class="section">Skeletons</h4>
+    <div class="list">
+      @if (skeletons().length === 0) {
+        <div class="empty">No skeletons yet</div>
+      } @else {
+        @for (s of skeletons(); track s.id) {
+          <div class="row" [class.active]="isSelected('skeleton', s.id)" (click)="selectEntity('skeleton', s.id)">
+            <span class="sw" [style.background]="s.color"></span>
+            <span class="name">{{ labelName(s.labelId) }} #{{ s.id }}</span>
+            <span class="meta">{{ pointCount(s) }} pts</span>
+          </div>
+        }
+      }
+    </div>
+  </mat-sidenav>
+
+  <mat-sidenav-content>
+    <!-- Left floating tool rail -->
+    <div class="tool-rail elevation">
+      <button class="tool-btn" [class.active]="currentTool().kind === 'select'" (click)="selectTool('select')" title="Select (V)">
+        <mat-icon fontIcon="near_me"></mat-icon>
+      </button>
+      <button class="tool-btn" [class.active]="currentTool().kind === 'box'" (click)="selectTool('box')" title="Box (B)">
+        <mat-icon fontIcon="crop_din"></mat-icon>
+      </button>
+      <button class="tool-btn" [class.active]="currentTool().kind === 'skeleton'" (click)="selectTool('skeleton')" title="Skeleton (K)">
+        <mat-icon fontIcon="polyline"></mat-icon>
+      </button>
+      <div class="rail-sep"></div>
+      <button class="tool-btn" [class.active]="currentTool().kind === 'pan'" (click)="selectTool('pan')" title="Pan (H/Space)">
+        <mat-icon fontIcon="pan_tool_alt"></mat-icon>
+      </button>
+      <button class="tool-btn" (click)="zoomBy( 1)" title="Zoom In (+)">
+        <mat-icon fontIcon="zoom_in"></mat-icon>
+      </button>
+      <button class="tool-btn" (click)="zoomBy(-1)" title="Zoom Out (-)">
+        <mat-icon fontIcon="zoom_out"></mat-icon>
+      </button>
+      <button class="tool-btn" (click)="onFit()" title="Fit (F)">
+        <mat-icon fontIcon="fit_screen"></mat-icon>
+      </button>
+
+      <div class="rail-fill"></div>
+
+      <button class="tool-btn small" (click)="sidenavOpen = !sidenavOpen" title="Toggle Sidebar">
+        <mat-icon>{{ sidenavOpen ? 'chevron_right' : 'chevron_left' }}</mat-icon>
+      </button>
+    </div>
+
+    <!-- Stage with canvases -->
+    <div class="stage" (wheel)="onWheel($event)">
+      <div class="canvas-wrap"
+           (pointerdown)="onPointerDown($event)"
+           (pointermove)="onPointerMove($event)"
+           (pointerup)="onPointerUp($event)"
+           (pointercancel)="onPointerCancel($event)">
+        <canvas #bgCanvas class="canvas base"></canvas>
+        <canvas #fgCanvas class="canvas overlay"></canvas>
+      </div>
+    </div>
+  </mat-sidenav-content>
+</mat-sidenav-container>
