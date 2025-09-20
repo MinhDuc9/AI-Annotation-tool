@@ -13,6 +13,9 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { CommentService } from "src/comment/comment.service";
 import { Comment } from "src/comment/entities/comment.entity";
+import { SkeletalService } from "src/skeletal/skeletal.service";
+import { CreateSkeletalDto } from "src/skeletal/dto/create-skeletal.dto";
+import { UpdateSkeletalDto } from "src/skeletal/dto/update-skeletal.dto";
 
 // Minimal shape we need from a Multer file to avoid ambient type dependency
 interface MulterLikeFile {
@@ -37,6 +40,7 @@ export class SlideService {
         private readonly slideRepository: Repository<Slide>,
         private readonly projectService: ProjectService,
         private readonly commentService: CommentService,
+        private readonly skeletalService: SkeletalService,
     ) {}
 
     async create(projectId: string): Promise<Slide> {
@@ -222,5 +226,58 @@ export class SlideService {
         await this.slideRepository.delete({ id: slideId });
 
         return `Removed slide ${slideId}`;
+    }
+
+    private async ensureSlideForProject(
+        projectId: string,
+        slideId: string,
+    ): Promise<Slide> {
+        await this.projectService.ensureUserOwnsProject(projectId);
+        const slide = await this.slideRepository.findOne({
+            where: { id: slideId, projectId },
+        });
+        if (!slide) {
+            throw new NotFoundException(
+                `Slide with id ${slideId} not found for project ${projectId}`,
+            );
+        }
+        return slide;
+    }
+
+    async getAllSkeletals(projectId: string, slideId: string) {
+        await this.ensureSlideForProject(projectId, slideId);
+        return this.skeletalService.findAll(slideId);
+    }
+
+    async createSkeletal(
+        projectId: string,
+        slideId: string,
+        createSkeletalDto: CreateSkeletalDto,
+    ) {
+        await this.ensureSlideForProject(projectId, slideId);
+        return this.skeletalService.create(slideId, createSkeletalDto);
+    }
+
+    async updateSkeletal(
+        projectId: string,
+        slideId: string,
+        skeletalId: string,
+        updateSkeletalDto: UpdateSkeletalDto,
+    ) {
+        await this.ensureSlideForProject(projectId, slideId);
+        return this.skeletalService.update(
+            skeletalId,
+            slideId,
+            updateSkeletalDto,
+        );
+    }
+
+    async deleteSkeletal(
+        projectId: string,
+        slideId: string,
+        skeletalId: string,
+    ) {
+        await this.ensureSlideForProject(projectId, slideId);
+        await this.skeletalService.remove(skeletalId, slideId);
     }
 }

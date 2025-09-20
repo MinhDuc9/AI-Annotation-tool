@@ -11,6 +11,7 @@ import { CommentModule } from "src/comment/comment.module";
 import { Comment } from "src/comment/entities/comment.entity";
 import { BoundingBox } from "src/bounding-box/entities/bounding-box.entity";
 import { Skeletal } from "src/skeletal/entities/skeletal.entity";
+import { SkeletalModule } from "src/skeletal/skeletal.module";
 
 @Module({
     imports: [
@@ -24,6 +25,7 @@ import { Skeletal } from "src/skeletal/entities/skeletal.entity";
         ProjectModule,
         CommentModule,
         ProjectUserRoleModule,
+        SkeletalModule,
     ],
     controllers: [SlideController],
     providers: [SlideService, RolesGuard],
