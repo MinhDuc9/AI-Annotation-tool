@@ -1,22 +1,24 @@
 import {
-    Controller,
-    Get,
-    Post,
     Body,
-    Patch,
-    Param,
+    Controller,
     Delete,
+    Get,
+    Param,
+    Patch,
+    Post,
+    UploadedFile,
     UseGuards,
     UseInterceptors,
-    UploadedFile,
 } from "@nestjs/common";
-import { SlideService } from "./slide.service";
-import { UpdateSlideDto } from "./dto/update-slide.dto";
-import { RolesGuard } from "src/roles/roles.guard";
-import { Roles } from "src/roles/roles.decorator";
 import { FileInterceptor } from "@nestjs/platform-express";
+import { CreateBoundingBoxDto } from "src/bounding-box/dto/create-bounding-box.dto";
+import { UpdateBoundingBoxDto } from "src/bounding-box/dto/update-bounding-box.dto";
 import { CreateSkeletalDto } from "src/skeletal/dto/create-skeletal.dto";
 import { UpdateSkeletalDto } from "src/skeletal/dto/update-skeletal.dto";
+import { Roles } from "src/roles/roles.decorator";
+import { RolesGuard } from "src/roles/roles.guard";
+import { SlideService } from "./slide.service";
+import { UpdateSlideDto } from "./dto/update-slide.dto";
 
 @Controller("slide")
 @UseGuards(RolesGuard)
@@ -59,6 +61,57 @@ export class SlideController {
     @Delete(":slide_id")
     remove(@Param("slide_id") slideId: string) {
         return this.slideService.remove(slideId);
+    }
+
+    @Get(":project_id/:slide_id/bounding_box")
+    getAllBoundingBoxes(
+        @Param("project_id")
+        projectId: string,
+        @Param("slide_id") slideId: string,
+    ) {
+        return this.slideService.getAllBoundingBoxes(projectId, slideId);
+    }
+
+    @Post(":project_id/:slide_id/bounding_box")
+    createBoundingBox(
+        @Param("project_id")
+        projectId: string,
+        @Param("slide_id") slideId: string,
+        @Body() dto: CreateBoundingBoxDto,
+    ) {
+        return this.slideService.createBoundingBox(projectId, slideId, dto);
+    }
+
+    @Patch(":project_id/:slide_id/bounding_box/:bounding_box_id")
+    updateBoundingBox(
+        @Param("project_id")
+        projectId: string,
+        @Param("slide_id") slideId: string,
+        @Param("bounding_box_id")
+        boundingBoxId: string,
+        @Body() dto: UpdateBoundingBoxDto,
+    ) {
+        return this.slideService.updateBoundingBox(
+            projectId,
+            slideId,
+            boundingBoxId,
+            dto,
+        );
+    }
+
+    @Delete(":project_id/:slide_id/bounding_box/:bounding_box_id")
+    deleteBoundingBox(
+        @Param("project_id")
+        projectId: string,
+        @Param("slide_id") slideId: string,
+        @Param("bounding_box_id")
+        boundingBoxId: string,
+    ) {
+        return this.slideService.deleteBoundingBox(
+            projectId,
+            slideId,
+            boundingBoxId,
+        );
     }
 
     @Post(":project_id/:slide_id/skeletal")

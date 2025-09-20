@@ -16,6 +16,9 @@ import { Comment } from "src/comment/entities/comment.entity";
 import { SkeletalService } from "src/skeletal/skeletal.service";
 import { CreateSkeletalDto } from "src/skeletal/dto/create-skeletal.dto";
 import { UpdateSkeletalDto } from "src/skeletal/dto/update-skeletal.dto";
+import { BoundingBoxService } from "src/bounding-box/bounding-box.service";
+import { CreateBoundingBoxDto } from "src/bounding-box/dto/create-bounding-box.dto";
+import { UpdateBoundingBoxDto } from "src/bounding-box/dto/update-bounding-box.dto";
 
 // Minimal shape we need from a Multer file to avoid ambient type dependency
 interface MulterLikeFile {
@@ -41,6 +44,7 @@ export class SlideService {
         private readonly projectService: ProjectService,
         private readonly commentService: CommentService,
         private readonly skeletalService: SkeletalService,
+        private readonly boundingBoxService: BoundingBoxService,
     ) {}
 
     async create(projectId: string): Promise<Slide> {
@@ -242,6 +246,43 @@ export class SlideService {
             );
         }
         return slide;
+    }
+
+    async getAllBoundingBoxes(projectId: string, slideId: string) {
+        await this.ensureSlideForProject(projectId, slideId);
+        return this.boundingBoxService.findAll(slideId);
+    }
+
+    async createBoundingBox(
+        projectId: string,
+        slideId: string,
+        createBoundingBoxDto: CreateBoundingBoxDto,
+    ) {
+        await this.ensureSlideForProject(projectId, slideId);
+        return this.boundingBoxService.create(slideId, createBoundingBoxDto);
+    }
+
+    async updateBoundingBox(
+        projectId: string,
+        slideId: string,
+        boundingBoxId: string,
+        updateBoundingBoxDto: UpdateBoundingBoxDto,
+    ) {
+        await this.ensureSlideForProject(projectId, slideId);
+        return this.boundingBoxService.update(
+            boundingBoxId,
+            slideId,
+            updateBoundingBoxDto,
+        );
+    }
+
+    async deleteBoundingBox(
+        projectId: string,
+        slideId: string,
+        boundingBoxId: string,
+    ) {
+        await this.ensureSlideForProject(projectId, slideId);
+        await this.boundingBoxService.remove(boundingBoxId, slideId);
     }
 
     async getAllSkeletals(projectId: string, slideId: string) {

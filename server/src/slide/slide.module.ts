@@ -10,6 +10,7 @@ import { ProjectUserRoleModule } from "src/project-user-role/project-user-role.m
 import { CommentModule } from "src/comment/comment.module";
 import { Comment } from "src/comment/entities/comment.entity";
 import { BoundingBox } from "src/bounding-box/entities/bounding-box.entity";
+import { BoundingBoxModule } from "src/bounding-box/bounding-box.module";
 import { Skeletal } from "src/skeletal/entities/skeletal.entity";
 import { SkeletalModule } from "src/skeletal/skeletal.module";
 
@@ -25,6 +26,7 @@ import { SkeletalModule } from "src/skeletal/skeletal.module";
         ProjectModule,
         CommentModule,
         ProjectUserRoleModule,
+        BoundingBoxModule,
         SkeletalModule,
     ],
     controllers: [SlideController],
