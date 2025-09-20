@@ -1,17 +1,27 @@
 import { DecimalPipe } from '@angular/common';
-import { AfterViewInit, Component, DestroyRef, ElementRef, Injector, ViewChild, effect, inject, signal } from '@angular/core';
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  ViewChild,
+  effect,
+  inject,
+  signal,
+  Injector,
+  OnDestroy,
+} from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
-/* ------------ Data models (image space) ------------ */
+/* ---------------- Data models (image space) ---------------- */
 export type Id = number;
 export interface LabelDef { id: string; name: string; color?: string; }
 
 export interface BoxAnn {
   id: Id;
-  x: number; y: number; w: number; h: number;
+  x: number; y: number; w: number; h: number;   // image pixels
   labelId: string;
   color: string;
   isLocked?: boolean;
@@ -27,26 +37,16 @@ export interface SkeletonAnn {
   color: string;
 }
 
-/* ------------ View transform ------------ */
-interface ViewState {
-  scale: number;
-  panX: number;
-  panY: number;
-  mat: DOMMatrix;
-  inv: DOMMatrix;
-}
-
-/* ------------ Tools ------------ */
-type ToolKind = 'select' | 'pan' | 'box' | 'skeleton';
+/* ---------------- Tools contract ---------------- */
+type ToolKind = 'select' | 'box' | 'skeleton' | 'stagePan';
 interface ToolCtx {
-  view: ViewState;
   boxes: BoxAnn[];
   skeletons: SkeletonAnn[];
   selection: { type: 'box' | 'skeleton' | null; id: Id | null; };
   activeLabelId: string;
   activeColor: string;
   requestPaint(): void;
-  screenToImage(x: number, y: number): {x: number; y: number};
+  screenToImage(clientX: number, clientY: number): {x: number; y: number};
   clampToImage(p: {x:number; y:number}): {x:number; y:number};
 }
 interface Tool {
@@ -59,25 +59,108 @@ interface Tool {
 
 @Component({
   selector: 'app-annotation-edit',
-  standalone: true,
+  imports: [MatSidenavModule, MatSelectModule, MatIconModule, DecimalPipe],
   templateUrl: './annotation-edit.component.html',
   styleUrls: ['./annotation-edit.component.scss'],
-  imports: [MatSidenavModule, MatIconModule, MatSelectModule, DecimalPipe, ],
 })
-export class AnnotationEditComponent implements AfterViewInit {
+export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   private snack = inject(MatSnackBar);
   private injector = inject(Injector);
 
-  sidenavOpen = true;
+  /* ---------- View refs ---------- */
+  @ViewChild('bgCanvas',   { static: true }) bgCanvasRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('fgCanvas',   { static: true }) fgCanvasRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('viewport',   { static: true }) viewportRef!: ElementRef<HTMLDivElement>;
+  @ViewChild('desk',     { static: true }) deskRef!: ElementRef<HTMLDivElement>;
+  @ViewChild('stage',    { static: false, read: ElementRef }) stageRef?: ElementRef<HTMLDivElement>;
 
-  @ViewChild('bgCanvas', { static: true }) bgCanvasRef!: ElementRef<HTMLCanvasElement>;
-  @ViewChild('fgCanvas', { static: true }) fgCanvasRef!: ElementRef<HTMLCanvasElement>;
+  /* ---------- Stage (desk) pan + zoom (SCREEN space) ---------- */
+  stagePan   = signal<{x:number;y:number}>({ x: 0, y: 0 });
+  stageScale = signal<number>(1);
 
+  private stageDragging = false;
+  private stageLast = { x: 0, y: 0 };
+  private spaceHeld = false;
+
+  // Stage pointer handlers (wired on the .stage element in HTML)
+  onStagePointerDown(e: PointerEvent) {
+    // Middle mouse OR Space+drag to pan the whole desk
+    if (e.button === 1 || this.spaceHeld) {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      this.stageDragging = true;
+      this.stageLast = { x: e.clientX, y: e.clientY };
+      e.preventDefault();
+    }
+  }
+  onStagePointerMove(e: PointerEvent) {
+    if (!this.stageDragging) return;
+    const dx = e.clientX - this.stageLast.x;
+    const dy = e.clientY - this.stageLast.y;
+    this.stageLast = { x: e.clientX, y: e.clientY };
+    const p = this.stagePan();
+    this.stagePan.set({ x: p.x + dx, y: p.y + dy });
+  }
+  onStagePointerUp(e: PointerEvent) {
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    this.stageDragging = false;
+  }
+
+  // Stage wheel zoom (cursor-anchored)
+  onStageWheel(e: WheelEvent) {
+    e.preventDefault();
+    const stageEl = this.viewportRef.nativeElement.closest('.stage') as HTMLElement;
+    if (!stageEl) return;
+
+    const rect = stageEl.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+
+    const s = this.stageScale();
+    const factor = Math.exp((e.deltaY > 0 ? -1 : 1) * 0.15); // zoom speed
+    const newS = Math.min(20, Math.max(0.05, s * factor));
+
+    // Keep (cx,cy) anchored while scaling: pan' = c - (c - pan) * (s'/s)
+    const pan = this.stagePan();
+    const k = newS / s;
+    const newPanX = cx - (cx - pan.x) * k;
+    const newPanY = cy - (cy - pan.y) * k;
+
+    this.stageScale.set(newS);
+    this.stagePan.set({ x: newPanX, y: newPanY });
+  }
+
+  // Allow Space to pan the desk even when starting on the canvas
+  private onKeyDown = (e: KeyboardEvent) => { if (e.code === 'Space') { this.spaceHeld = true; e.preventDefault(); return; } 
+  if (e.key.toLowerCase() === 'h') { this.selectTool('stagePan'); }};
+  private onKeyUp   = (e: KeyboardEvent) => { if (e.code === 'Space') { this.spaceHeld = false; } };
+  
+
+  // Helpers to initiate/continue stage pan from the canvas handlers
+  private beginStagePan(fromEl: EventTarget, e: PointerEvent) {
+    (fromEl as HTMLElement).setPointerCapture?.(e.pointerId);
+    this.stageDragging = true;
+    this.stageLast = { x: e.clientX, y: e.clientY };
+  }
+  private moveStagePan(e: PointerEvent) {
+    const dx = e.clientX - this.stageLast.x;
+    const dy = e.clientY - this.stageLast.y;
+    this.stageLast = { x: e.clientX, y: e.clientY };
+    const p = this.stagePan();
+    this.stagePan.set({ x: p.x + dx, y: p.y + dy });
+  }
+
+  /* ---------- Image & canvas (IMAGE fixed inside CANVAS) ---------- */
   private img = new Image();
   private imgLoaded = signal(false);
-  imageWidth = signal(0);
+  imageWidth  = signal(0);
   imageHeight = signal(0);
 
+  // Canvas viewport size equals image size if image < cap; otherwise capped (Photopea-like)
+  canvasSize = signal<{ w: number; h: number }>({ w: 960, h: 600 });
+
+  private ro?: ResizeObserver;
+
+  /* ---------- Data ---------- */
   labels = signal<LabelDef[]>([
     { id: 'bird', name: 'Bird', color: '#ff8c00' },
     { id: 'wing', name: 'Wing', color: '#00d7ff' },
@@ -92,30 +175,31 @@ export class AnnotationEditComponent implements AfterViewInit {
 
   selection = signal<{ type: 'box' | 'skeleton' | null; id: Id | null }>({ type: null, id: null });
 
-  private view = signal<ViewState>({
-    scale: 1, panX: 0, panY: 0, mat: new DOMMatrix(), inv: new DOMMatrix(),
-  });
+  sidenavOpen = true;
 
-  // Tools
-  private panTool: Tool = this.makePanTool();
-  private boxTool: Tool = this.makeBoxTool();
+  /* ---------- Tools ---------- */
+  private boxTool: Tool      = this.makeBoxTool();
   private selectToolObj: Tool = this.makeSelectTool();
-  private skeletonTool: Tool = this.makeSkeletonTool();
+  private skeletonTool: Tool  = this.makeSkeletonTool();
+  private stagePanTool: Tool   = this.makeStagePanTool();
 
-  currentTool = signal<Tool>(this.panTool);
-  selectTool(kind: ToolKind) {
-    switch (kind) {
-      case 'pan': this.currentTool.set(this.panTool); break;
-      case 'box': this.currentTool.set(this.boxTool); break;
-      case 'select': this.currentTool.set(this.selectToolObj); break;
-      case 'skeleton': this.currentTool.set(this.skeletonTool); break;
-    }
-    this.requestPaint();
-  }
+
+  currentTool = signal<Tool>(this.selectToolObj);
+selectTool(kind: ToolKind) {
+  this.currentTool.set(
+    kind === 'box'       ? this.boxTool :
+    kind === 'skeleton'  ? this.skeletonTool :
+    kind === 'stagePan'  ? this.stagePanTool :
+                           this.selectToolObj
+  );
+  this.requestPaint();
+}
+
 
   labelName = (id: string) => this.labels().find(l => l.id === id)?.name ?? id;
   pointCount = (s: SkeletonAnn) => Object.keys(s.points).length;
 
+  /* ---------- Paint scheduling ---------- */
   private needsPaint = false;
   requestPaint = () => {
     if (this.needsPaint) return;
@@ -123,31 +207,52 @@ export class AnnotationEditComponent implements AfterViewInit {
     requestAnimationFrame(() => { this.needsPaint = false; this.paint(); });
   };
 
+  /* ---------- Lifecycle ---------- */
   ngAfterViewInit() {
     this.resizeToContainer();
 
+    // ResizeObserver: if the viewport box resizes (its CSS size changes),
+    // update canvas pixels and refit the desk so the canvas stays nicely visible.
+    this.ro = new ResizeObserver(() => {
+  this.resizeToContainer(); // keep canvas pixels crisp
+  this.fitDeskToView();     // recenter desk with current gutters
+});
+
+const stageEl = this.stageRef?.nativeElement ??
+                this.viewportRef.nativeElement.closest('.stage') as HTMLElement;
+if (stageEl) this.ro.observe(stageEl);
+this.ro.observe(this.viewportRef.nativeElement);
+
+
+    // Repaint when state changes
     effect(() => {
-      void this.boxes(); void this.skeletons(); void this.view(); void this.imgLoaded();
+      void this.boxes(); void this.skeletons();
+      void this.canvasSize(); void this.imgLoaded();
       this.requestPaint();
     }, { allowSignalWrites: true, injector: this.injector });
 
+    // Load image
     this.img.addEventListener('load', () => {
       this.imageWidth.set(this.img.naturalWidth);
       this.imageHeight.set(this.img.naturalHeight);
       this.imgLoaded.set(true);
-      this.onFit();
+
+      // Decide the canvas viewport size (image size if below cap; otherwise cap)
+      this.fitCanvasToImageOrMax();
+      this.resizeToContainer();
+
+      // Fit the whole canvas on screen (stage) - scale & center desk
+      requestAnimationFrame(() => this.fitDeskToView());
     });
 
-    // Simple hotkeys (optional, feel free to extend)
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'v') this.selectTool('select');
-      else if (e.key === 'b') this.selectTool('box');
-      else if (e.key === 'k') this.selectTool('skeleton');
-      else if (e.key === 'h' || e.code === 'Space') this.selectTool('pan');
-      else if (e.key === '+') this.zoomBy(1);
-      else if (e.key === '-') this.zoomBy(-1);
-      else if (e.key.toLowerCase() === 'f') this.onFit();
-    }, { passive: true });
+    window.addEventListener('keydown', this.onKeyDown, { passive: false });
+    window.addEventListener('keyup',   this.onKeyUp,   { passive: true  });
+  }
+
+  ngOnDestroy() {
+    this.ro?.disconnect();
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup',   this.onKeyUp);
   }
 
   /* ---------- UI actions ---------- */
@@ -186,70 +291,245 @@ export class AnnotationEditComponent implements AfterViewInit {
     this.selection.set({ type, id }); this.currentTool.set(this.selectToolObj); this.requestPaint();
   }
 
-  /* ---------- Pointer & wheel ---------- */
+  onColorInput(e: Event) {
+  this.activeColor.set((e.target as HTMLInputElement).value);
+}
+
+  /* ---------- Canvas pointer handlers (tools) ---------- */
   onPointerDown(e: PointerEvent) {
-    const wrap = (e.currentTarget as HTMLElement);
-    wrap.setPointerCapture?.(e.pointerId);
+    const el = (e.currentTarget as HTMLElement);
+
+    // If middle button OR Space is held -> STAGE PAN even when starting on canvas
+    if (e.button === 1 || this.spaceHeld) {
+      this.beginStagePan(el, e);
+      e.preventDefault();
+      return;
+    }
+
+    // If Pan tool is active, left-drag pans the desk
+  if (this.currentTool().kind === 'stagePan') {
+    this.beginStagePan(el, e);
+    e.preventDefault();
+    return;
+  }
+
+    el.setPointerCapture?.(e.pointerId);
     this.currentTool().onDown(e, this.toolCtx());
   }
-  onPointerMove(e: PointerEvent) { this.currentTool().onMove(e, this.toolCtx()); }
+  onPointerMove(e: PointerEvent) {
+    if (this.stageDragging) { this.moveStagePan(e); return; }
+    this.currentTool().onMove(e, this.toolCtx());
+  }
   onPointerUp(e: PointerEvent) {
-    const wrap = (e.currentTarget as HTMLElement);
-    wrap.releasePointerCapture?.(e.pointerId);
+    const el = (e.currentTarget as HTMLElement);
+    if (this.stageDragging) {
+      el.releasePointerCapture?.(e.pointerId);
+      this.stageDragging = false;
+      return;
+    }
+    el.releasePointerCapture?.(e.pointerId);
     this.currentTool().onUp(e, this.toolCtx());
   }
-  onPointerCancel(_: PointerEvent) { /* optional reset */ }
+  onPointerCancel(_: PointerEvent) {}
 
-  onWheel(e: WheelEvent) {
-    e.preventDefault();
-    if (!this.imgLoaded()) return;
-    const fg = this.fgCanvasRef.nativeElement;
-    const rect = fg.getBoundingClientRect();
-    const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+  /* ---------- Stage fit (scale+center desk) ---------- */
+  /** Make the whole canvas visible on screen by scaling + centering the desk */
+  /** Get numeric paddings of the stage element */
+private getStagePadding(stageEl: HTMLElement) {
+  const cs = getComputedStyle(stageEl);
+  const pTop = parseFloat(cs.paddingTop) || 0;
+  const pRight = parseFloat(cs.paddingRight) || 0;
+  const pBottom = parseFloat(cs.paddingBottom) || 0;
+  const pLeft = parseFloat(cs.paddingLeft) || 0;
+  return { pTop, pRight, pBottom, pLeft };
+}
 
-    const v = this.view();
-    const sign = e.deltaY > 0 ? -1 : 1;
-    const factor = Math.exp(sign * 0.15);
+/** Fit the whole canvas into the stage's inner box (centered, with gutters) */
+private fitDeskToView() {
+  const stageEl = (this.stageRef?.nativeElement ??
+                   this.viewportRef.nativeElement.closest('.stage')) as HTMLElement | null;
+  if (!stageEl) return;
 
-    const before = this.screenToImage(cx, cy);
-    const scale = Math.min(40, Math.max(0.05, v.scale * factor));
-    const afterMat = new DOMMatrix().translate(v.panX, v.panY).scale(scale);
-    const inv = afterMat.inverse();
-    const after = this.applyDOMMatrix(inv, cx, cy);
+  const rect = stageEl.getBoundingClientRect();
+  const { pTop, pRight, pBottom, pLeft } = this.getStagePadding(stageEl);
 
-    const panX = v.panX + (after.x - before.x) * scale;
-    const panY = v.panY + (after.y - before.y) * scale;
+  // Inner content size (usable space inside the gutters)
+  const innerW = Math.max(0, rect.width  - pLeft - pRight);
+  const innerH = Math.max(0, rect.height - pTop  - pBottom);
 
-    this.setView({ scale, panX, panY });
+  const cw = this.canvasSize().w;
+  const ch = this.canvasSize().h;
+  if (!cw || !ch || !innerW || !innerH) return;
+
+  // Scale so the canvas fits in the inner box (with a small margin)
+  const s = Math.min(innerW / cw, innerH / ch) * 0.95;
+  this.stageScale.set(s);
+
+  // Center inside the inner box (pad offsets included)
+  const panX = pLeft + (innerW - cw * s) / 2;
+  const panY = pTop  + (innerH - ch * s) / 2;
+
+  this.stagePan.set({ x: panX, y: panY });
+}
+
+  /* ---------- Canvas size policy (image or capped) ---------- */
+  /** Set canvas size to the image if smaller than cap; else use cap box. */
+  private fitCanvasToImageOrMax() {
+    const MAX_W = 1400;
+    const MAX_H = 900;
+
+    const iw = this.imageWidth();
+    const ih = this.imageHeight();
+
+    if (!iw || !ih) {
+      this.canvasSize.set({ w: MAX_W, h: MAX_H });
+      return;
+    }
+
+    if (iw <= MAX_W && ih <= MAX_H) {
+      this.canvasSize.set({ w: iw, h: ih });
+    } else {
+      this.canvasSize.set({ w: MAX_W, h: MAX_H });
+    }
   }
 
-  /* ---------- Quick zoom control for rail ---------- */
-  zoomBy(dir: 1 | -1) {
+  /* ---------- Painting (image fixed inside canvas) ---------- */
+  private paint() {
+    const bg = this.bgCanvasRef.nativeElement;
     const fg = this.fgCanvasRef.nativeElement;
-    const rect = fg.getBoundingClientRect();
-    // zoom around center of canvas
-    const cx = rect.width / 2, cy = rect.height / 2;
-    const fakeEvent = new WheelEvent('wheel', { deltaY: dir < 0 ? 100 : -100, clientX: rect.left + cx, clientY: rect.top + cy });
-    this.onWheel(fakeEvent);
+    const gBg = bg.getContext('2d')!;
+    const g   = fg.getContext('2d')!;
+
+    // Ensure crisp pixels (using layout size, independent of stage scale)
+    this.ensureDevicePixels(bg);
+    this.ensureDevicePixels(fg);
+
+    // BACKGROUND: draw image scaled to the canvas pixel size (fixed in the box)
+    gBg.setTransform(1,0,0,1,0,0);
+    gBg.clearRect(0,0,bg.width,bg.height);
+
+    if (this.imgLoaded()) {
+      gBg.imageSmoothingEnabled = true;
+      gBg.drawImage(this.img, 0, 0, bg.width, bg.height);
+    } else {
+      // simple checker
+      const size = 16;
+      for (let y=0; y<bg.height; y+=size) {
+        for (let x=0; x<bg.width; x+=size) {
+          gBg.fillStyle = ((x/size + y/size) % 2 === 0) ? '#111' : '#161616';
+          gBg.fillRect(x,y,size,size);
+        }
+      }
+    }
+
+    // OVERLAY: draw annotations in image space mapped to canvas pixels
+    g.setTransform(1,0,0,1,0,0);
+    g.clearRect(0,0,fg.width,fg.height);
+
+    const iw = Math.max(1, this.imageWidth());
+    const ih = Math.max(1, this.imageHeight());
+    const sx = fg.width  / iw;
+    const sy = fg.height / ih;
+
+    // Boxes
+    for (const b of this.boxes()) {
+      this.strokeRectPx(g, b.x * sx, b.y * sy, b.w * sx, b.h * sy, b.color, 2);
+      this.fillLabelPx(g, b.x * sx, b.y * sy - 6, this.labelName(b.labelId), b.color);
+    }
+
+    // Skeletons
+    for (const s of this.skeletons()) {
+      g.strokeStyle = s.color; g.lineWidth = 2; g.lineJoin = 'round'; g.lineCap = 'round';
+      for (const [a,b] of s.edges) {
+        const pa = s.points[a], pb = s.points[b];
+        if (pa && pb) { g.beginPath(); g.moveTo(pa.x * sx, pa.y * sy); g.lineTo(pb.x * sx, pb.y * sy); g.stroke(); }
+      }
+      for (const k of Object.values(s.points)) {
+        g.fillStyle = s.color;
+        g.beginPath(); g.arc(k.x * sx, k.y * sy, 3, 0, Math.PI*2); g.fill();
+      }
+    }
+
+    // Tool overlays (e.g., selection highlight)
+    this.currentTool().drawOverlay?.(g, this.toolCtx());
   }
 
-  /* ---------- Tools ---------- */
-  private makePanTool(): Tool {
-    let dragging = false;
-    let lastX = 0, lastY = 0;
+  /* ---------- Helpers ---------- */
+  /** Use LAYOUT size (offsetWidth/offsetHeight), not getBoundingClientRect (which includes stage scale) */
+  private ensureDevicePixels(c: HTMLCanvasElement) {
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const wCss = c.offsetWidth;
+    const hCss = c.offsetHeight;
+    const w = Math.round(wCss * dpr);
+    const h = Math.round(hCss * dpr);
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  }
+
+  /** Current viewport (canvas box) rect in client coords (after stage transforms) */
+  private viewportRect() {
+    return this.fgCanvasRef.nativeElement.getBoundingClientRect();
+  }
+
+  /** Keep canvases' CSS size in sync with the viewport box & update pixels */
+  private resizeToContainer() {
+    const fg = this.fgCanvasRef.nativeElement;
+    const bg = this.bgCanvasRef.nativeElement;
+
+    // CSS size controlled by [style.width/height.px] bound to canvasSize()
+    // Just ensure device pixels & repaint
+    this.ensureDevicePixels(bg);
+    this.ensureDevicePixels(fg);
+    this.requestPaint();
+  }
+
+  /** Map client coordinates to IMAGE pixels (robust against stage scale & pan) */
+  private screenToImage(clientX: number, clientY: number) {
+    const rect = this.viewportRect(); // transformed canvas rect on screen
+    const lx = clientX - rect.left;   // local X inside the canvas box
+    const ly = clientY - rect.top;    // local Y inside the canvas box
+
+    // Map local canvas px -> image px
+    const iw = this.imageWidth(), ih = this.imageHeight();
+    const sx = iw / Math.max(1, rect.width);
+    const sy = ih / Math.max(1, rect.height);
+
+    return { x: lx * sx, y: ly * sy };
+  }
+
+  private clampToImage(p: {x:number; y:number}) {
+    const iw = this.imageWidth(), ih = this.imageHeight();
     return {
-      kind: 'pan',
-      onDown: (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; },
-      onMove: (e) => {
-        if (!dragging) return;
-        const dx = e.clientX - lastX, dy = e.clientY - lastY;
-        lastX = e.clientX; lastY = e.clientY;
-        const v = this.view(); this.setView({ scale: v.scale, panX: v.panX + dx, panY: v.panY + dy });
-      },
-      onUp: () => { dragging = false; },
+      x: Math.min(Math.max(0, p.x), Math.max(0, iw)),
+      y: Math.min(Math.max(0, p.y), Math.max(0, ih)),
     };
   }
 
+  private strokeRectPx(
+    g: CanvasRenderingContext2D,
+    x:number, y:number, w:number, h:number,
+    color:string, lw=2, dash?:number[]
+  ) {
+    g.save();
+    g.lineWidth = lw; g.strokeStyle = color;
+    if (dash) g.setLineDash(dash);
+    g.strokeRect(x, y, w, h);
+    g.restore();
+  }
+  private fillLabelPx(
+    g: CanvasRenderingContext2D,
+    x:number, y:number, text:string, color:string
+  ) {
+    g.save();
+    g.font = '12px Inter, system-ui, sans-serif';
+    const padX = 4, h = 16;
+    const m = g.measureText(text); const w = m.width + padX*2;
+    g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(x, y - h, w, h);
+    g.strokeStyle = color; g.lineWidth = 1; g.strokeRect(x + .5, y - h + .5, w - 1, h - 1);
+    g.fillStyle = '#fff'; g.fillText(text, x + padX, y - 4);
+    g.restore();
+  }
+
+  /* ---------- Tools ---------- */
   private makeBoxTool(): Tool {
     let creating = false;
     let startImg = { x: 0, y: 0 };
@@ -261,8 +541,7 @@ export class AnnotationEditComponent implements AfterViewInit {
         if (!this.imgLoaded()) return;
         creating = true;
         startImg = ctx.clampToImage(ctx.screenToImage(e.clientX, e.clientY));
-        const id = this.idSeq++;
-        tempId = id;
+        const id = this.idSeq++; tempId = id;
         const newBox: BoxAnn = {
           id,
           x: startImg.x, y: startImg.y, w: 1, h: 1,
@@ -275,11 +554,11 @@ export class AnnotationEditComponent implements AfterViewInit {
       onMove: (e, ctx) => {
         if (!creating || tempId == null) return;
         const cur = ctx.clampToImage(ctx.screenToImage(e.clientX, e.clientY));
-        const x = Math.min(startImg.x, cur.x), y = Math.min(startImg.y, cur.y);
-        const w = Math.max(1, Math.abs(cur.x - startImg.x)), h = Math.max(1, Math.abs(cur.y - startImg.y));
-        this.boxes.update(list =>
-          list.map(bb => bb.id === tempId ? { ...bb, x, y, w, h } : bb)
-        );
+        const x = Math.min(startImg.x, cur.x);
+        const y = Math.min(startImg.y, cur.y);
+        const w = Math.max(1, Math.abs(cur.x - startImg.x));
+        const h = Math.max(1, Math.abs(cur.y - startImg.y));
+        this.boxes.update(list => list.map(bb => bb.id === tempId ? { ...bb, x, y, w, h } : bb));
         ctx.requestPaint();
       },
       onUp: (_e, ctx) => { creating = false; tempId = null; ctx.requestPaint(); },
@@ -303,161 +582,60 @@ export class AnnotationEditComponent implements AfterViewInit {
         const s = this.selection();
         if (s.type === 'box' && s.id != null) {
           const b = ctx.boxes.find(bb => bb.id === s.id);
-          if (b) this.strokeRect(g, b, '#ffeb3b', 2, [6,4]);
+          if (b) this.strokeRectPx(g, b.x * (g.canvas.width/this.imageWidth()), b.y * (g.canvas.height/this.imageHeight()), b.w * (g.canvas.width/this.imageWidth()), b.h * (g.canvas.height/this.imageHeight()), '#ffeb3b', 2, [6,4]);
         }
       }
     };
   }
 
   private makeSkeletonTool(): Tool {
-    // Placeholder behavior-extend with keypoints/edges next
+    // Placeholder: behaves like select for now. Extend with keypoints later.
     return {
       kind: 'skeleton',
-      onDown: (e, ctx) => { this.selectTool('select'); this.currentTool().onDown(e, ctx); },
+      onDown: (e, ctx) => { this.currentTool.set(this.selectToolObj); this.currentTool().onDown(e, ctx); },
       onMove: (e, ctx) => this.selectToolObj.onMove(e, ctx),
-      onUp: (e, ctx) => this.selectToolObj.onUp(e, ctx),
+      onUp:   (e, ctx) => this.selectToolObj.onUp(e, ctx),
       drawOverlay: (g, ctx) => this.selectToolObj.drawOverlay?.(g, ctx),
     };
   }
 
-  /* ---------- Painting ---------- */
-  private paint() {
-    const bg = this.bgCanvasRef.nativeElement;
-    const fg = this.fgCanvasRef.nativeElement;
-    const gBg = bg.getContext('2d')!;
-    const g = fg.getContext('2d')!;
-    const v = this.view();
+  private makeStagePanTool(): Tool {
+  return {
+    kind: 'stagePan',
+    onDown: (e) => {
+      // Left-drag pans the desk
+      this.beginStagePan(e.currentTarget as HTMLElement, e);
+    },
+    onMove: (e) => {
+      if (this.stageDragging) this.moveStagePan(e);
+    },
+    onUp:   (e) => {
+      (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+      this.stageDragging = false;
+    },
+  };
+}
 
-    this.ensureDevicePixels(bg);
-    this.ensureDevicePixels(fg);
+  stageZoomBy(dir: 1 | -1) {
+  const stageEl = this.viewportRef.nativeElement.closest('.stage') as HTMLElement;
+  if (!stageEl) return;
+  const rect = stageEl.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top  + rect.height / 2;
 
-    // Background
-    gBg.setTransform(1,0,0,1,0,0);
-    gBg.clearRect(0,0,bg.width,bg.height);
-    if (this.imgLoaded()) {
-      gBg.setTransform(v.mat);
-      gBg.imageSmoothingEnabled = true;
-      gBg.drawImage(this.img, 0, 0);
-    } else {
-      // simple checker
-      const size = 16;
-      for (let y=0; y<bg.height; y+=size) {
-        for (let x=0; x<bg.width; x+=size) {
-          gBg.fillStyle = ((x/size + y/size) % 2 === 0) ? '#111' : '#161616';
-          gBg.fillRect(x,y,size,size);
-        }
-      }
-    }
+  const s = this.stageScale();
+  const factor = Math.exp((dir > 0 ? 1 : -1) * 0.15);
+  const newS = Math.min(20, Math.max(0.05, s * factor));
 
-    // Overlay
-    g.setTransform(1,0,0,1,0,0);
-    g.clearRect(0,0,fg.width,fg.height);
-    g.setTransform(v.mat);
-    g.lineJoin = 'round'; g.lineCap = 'round';
+  const pan = this.stagePan();
+  const k = newS / s;
+  this.stageScale.set(newS);
+  this.stagePan.set({ x: (cx - (cx - pan.x) * k), y: (cy - (cy - pan.y) * k) });
+}
 
-    // Boxes
-    for (const b of this.boxes()) {
-      this.strokeRect(g, b, b.color, 2);
-      this.fillLabel(g, b.x, b.y - 6, this.labelName(b.labelId), b.color);
-    }
-
-    // Skeletons (stub)
-    for (const s of this.skeletons()) {
-      g.strokeStyle = s.color; g.lineWidth = 2;
-      for (const [a,b] of s.edges) {
-        const pa = s.points[a], pb = s.points[b];
-        if (pa && pb) { g.beginPath(); g.moveTo(pa.x, pa.y); g.lineTo(pb.x, pb.y); g.stroke(); }
-      }
-      for (const k of Object.values(s.points)) {
-        g.fillStyle = s.color;
-        g.beginPath(); g.arc(k.x, k.y, 3, 0, Math.PI*2); g.fill();
-      }
-    }
-
-    this.currentTool().drawOverlay?.(g, this.toolCtx());
-  }
-
-  /* ---------- Helpers ---------- */
-  private resizeToContainer() {
-    const fg = this.fgCanvasRef.nativeElement;
-    const bg = this.bgCanvasRef.nativeElement;
-    const parent = fg.parentElement!;
-    const rect = parent.getBoundingClientRect();
-    bg.style.width = fg.style.width = `${rect.width}px`;
-    bg.style.height = fg.style.height = `${rect.height}px`;
-  }
-
-  private ensureDevicePixels(c: HTMLCanvasElement) {
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const rect = c.getBoundingClientRect();
-    const w = Math.round(rect.width * dpr), h = Math.round(rect.height * dpr);
-    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-  }
-
-  private setView(next: { scale: number; panX: number; panY: number }) {
-    const mat = new DOMMatrix().translate(next.panX, next.panY).scale(next.scale);
-    const inv = mat.inverse();
-    this.view.set({ ...next, mat, inv });
-    this.requestPaint();
-  }
-
-  onFit() {
-    const fg = this.fgCanvasRef.nativeElement;
-    const rect = fg.getBoundingClientRect();
-    const iw = this.imageWidth(), ih = this.imageHeight();
-    if (!iw || !ih) return;
-    const scale = Math.min(rect.width / iw, rect.height / ih) * 0.95;
-    const panX = (rect.width - iw * scale) / 2;
-    const panY = (rect.height - ih * scale) / 2;
-    this.setView({ scale, panX, panY });
-  }
-
-  private applyDOMMatrix(inv: DOMMatrix, x: number, y: number) {
-    const pt = new DOMPoint(x, y).matrixTransform(inv);
-    return { x: pt.x, y: pt.y };
-  }
-
-  private screenToImage(x: number, y: number) {
-    const fg = this.fgCanvasRef.nativeElement;
-    const rect = fg.getBoundingClientRect();
-    const vx = x - rect.left, vy = y - rect.top;
-    const inv = this.view().inv;
-    return this.applyDOMMatrix(inv, vx, vy);
-  }
-
-  private clampToImage(p: {x:number; y:number}) {
-    const iw = this.imageWidth(), ih = this.imageHeight();
-    return { x: Math.min(Math.max(0, p.x), Math.max(0, iw)),
-             y: Math.min(Math.max(0, p.y), Math.max(0, ih)) };
-  }
-
-  private strokeRect(g: CanvasRenderingContext2D, b: BoxAnn, color: string, lw = 2, dash?: number[]) {
-    g.save();
-    g.lineWidth = lw; g.strokeStyle = color;
-    if (dash) g.setLineDash(dash);
-    g.strokeRect(b.x, b.y, b.w, b.h);
-    g.restore();
-  }
-
-  private fillLabel(g: CanvasRenderingContext2D, x: number, y: number, text: string, color: string) {
-    g.save();
-    const padX = 4, padY = 2;
-    g.font = '12px Inter, system-ui, sans-serif';
-    const m = g.measureText(text);
-    const w = m.width + padX*2, h = 16;
-    g.fillStyle = 'rgba(0,0,0,.6)';
-    g.fillRect(x, y - h, w, h);
-    g.strokeStyle = color; g.lineWidth = 1;
-    g.strokeRect(x + .5, y - h + .5, w - 1, h - 1);
-    g.fillStyle = '#fff';
-    g.fillText(text, x + padX, y - 4);
-    g.restore();
-  }
-
+  /* ---------- Tool context ---------- */
   private toolCtx(): ToolCtx {
-    const v = this.view();
     return {
-      view: v,
       boxes: this.boxes(),
       skeletons: this.skeletons(),
       selection: this.selection(),
