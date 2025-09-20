@@ -9,10 +9,18 @@ import { RolesGuard } from "src/roles/roles.guard";
 import { ProjectUserRoleModule } from "src/project-user-role/project-user-role.module";
 import { CommentModule } from "src/comment/comment.module";
 import { Comment } from "src/comment/entities/comment.entity";
+import { BoundingBox } from "src/bounding-box/entities/bounding-box.entity";
+import { Skeletal } from "src/skeletal/entities/skeletal.entity";
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Slide, Project, Comment]),
+        TypeOrmModule.forFeature([
+            Slide,
+            Project,
+            Comment,
+            BoundingBox,
+            Skeletal,
+        ]),
         ProjectModule,
         CommentModule,
         ProjectUserRoleModule,
