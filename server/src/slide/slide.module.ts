@@ -13,6 +13,7 @@ import { BoundingBox } from "src/bounding-box/entities/bounding-box.entity";
 import { BoundingBoxModule } from "src/bounding-box/bounding-box.module";
 import { Skeletal } from "src/skeletal/entities/skeletal.entity";
 import { SkeletalModule } from "src/skeletal/skeletal.module";
+import { SlideGateway } from "./slide.gateway";
 
 @Module({
     imports: [
@@ -30,6 +31,6 @@ import { SkeletalModule } from "src/skeletal/skeletal.module";
         SkeletalModule,
     ],
     controllers: [SlideController],
-    providers: [SlideService, RolesGuard],
+    providers: [SlideService, RolesGuard, SlideGateway],
 })
 export class SlideModule {}

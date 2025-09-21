@@ -2,13 +2,13 @@ import {
     SubscribeMessage,
     WebSocketGateway,
     MessageBody,
-    ConnectedSocket,
     WsResponse,
     WebSocketServer,
 } from "@nestjs/websockets";
-import { Server, Socket } from "socket.io";
+import { Server } from "socket.io";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
+import { parseWsPayload, pickString } from "src/common/ws.utils";
 
 @WebSocketGateway({
     cors: {
@@ -23,51 +23,21 @@ export class CommentGateway {
         private readonly commentsQueue: Queue,
     ) {}
 
-    private handlePayload(payload: unknown): Record<string, unknown> {
-        let raw: unknown = payload;
-        if (typeof payload === "string") {
-            try {
-                raw = JSON.parse(payload);
-            } catch {
-                raw = {};
-            }
-        }
-
-        if (typeof raw !== "object" || raw === null) {
+    @SubscribeMessage("createComment")
+    async handleCreateMessage(
+        @MessageBody() payload: unknown,
+    ): Promise<WsResponse<Record<string, unknown>>> {
+        const obj = parseWsPayload(payload);
+        if (!obj) {
             return {
                 event: "error",
                 data: { message: "Invalid payload format" },
             };
         }
 
-        const obj = raw as Record<string, unknown>;
-        return obj;
-    }
-
-    @SubscribeMessage("joinSlide")
-    async handleJoinSlide(
-        @MessageBody() payload: unknown,
-        @ConnectedSocket() client: Socket,
-    ): Promise<WsResponse<any>> {
-        const obj = this.handlePayload(payload);
-        const slideIdStr = typeof obj.slideId === "string" ? obj.slideId : "";
-
-        if (!slideIdStr) {
-            return { event: "error", data: { message: "slideId is required" } };
-        }
-
-        await client.join(`slide:${slideIdStr}`);
-        return { event: "joined", data: { slideId: slideIdStr } };
-    }
-
-    @SubscribeMessage("createComment")
-    async handleCreateMessage(
-        @MessageBody() payload: unknown,
-    ): Promise<WsResponse<Record<string, unknown>>> {
-        const obj = this.handlePayload(payload);
-        const slideIdStr = typeof obj.slideId === "string" ? obj.slideId : "";
-        const userIdStr = typeof obj.userId === "string" ? obj.userId : "";
-        const contentStr = typeof obj.content === "string" ? obj.content : "";
+        const slideIdStr = pickString(obj, "slideId");
+        const userIdStr = pickString(obj, "userId");
+        const contentStr = pickString(obj, "content");
 
         if (!slideIdStr || !userIdStr || !contentStr) {
             return {
@@ -92,12 +62,18 @@ export class CommentGateway {
     async handleUpdateMessage(
         @MessageBody() payload: unknown,
     ): Promise<WsResponse<Record<string, unknown>>> {
-        const obj = this.handlePayload(payload);
-        const slideIdStr = typeof obj.slideId === "string" ? obj.slideId : "";
-        const userIdStr = typeof obj.userId === "string" ? obj.userId : "";
-        const contentStr = typeof obj.content === "string" ? obj.content : "";
-        const commentIdStr =
-            typeof obj.commentId === "string" ? obj.commentId : "";
+        const obj = parseWsPayload(payload);
+        if (!obj) {
+            return {
+                event: "error",
+                data: { message: "Invalid payload format" },
+            };
+        }
+
+        const slideIdStr = pickString(obj, "slideId");
+        const userIdStr = pickString(obj, "userId");
+        const contentStr = pickString(obj, "content");
+        const commentIdStr = pickString(obj, "commentId");
 
         if (!slideIdStr || !userIdStr || !contentStr || !commentIdStr) {
             return {
@@ -130,11 +106,17 @@ export class CommentGateway {
     async handleDeleteMessage(
         @MessageBody() payload: unknown,
     ): Promise<WsResponse<Record<string, unknown>>> {
-        const obj = this.handlePayload(payload);
-        const slideIdStr = typeof obj.slideId === "string" ? obj.slideId : "";
-        const userIdStr = typeof obj.userId === "string" ? obj.userId : "";
-        const commentIdStr =
-            typeof obj.commentId === "string" ? obj.commentId : "";
+        const obj = parseWsPayload(payload);
+        if (!obj) {
+            return {
+                event: "error",
+                data: { message: "Invalid payload format" },
+            };
+        }
+
+        const slideIdStr = pickString(obj, "slideId");
+        const userIdStr = pickString(obj, "userId");
+        const commentIdStr = pickString(obj, "commentId");
 
         if (!slideIdStr || !userIdStr || !commentIdStr) {
             return {
