@@ -589,15 +589,87 @@ private fitDeskToView() {
   }
 
   private makeSkeletonTool(): Tool {
-    // Placeholder: behaves like select for now. Extend with keypoints later.
-    return {
-      kind: 'skeleton',
-      onDown: (e, ctx) => { this.currentTool.set(this.selectToolObj); this.currentTool().onDown(e, ctx); },
-      onMove: (e, ctx) => this.selectToolObj.onMove(e, ctx),
-      onUp:   (e, ctx) => this.selectToolObj.onUp(e, ctx),
-      drawOverlay: (g, ctx) => this.selectToolObj.drawOverlay?.(g, ctx),
-    };
-  }
+  let activeSkeleton: Id | null = null;
+
+  return {
+    kind: 'skeleton',
+
+    onDown: (e, ctx) => {
+      if (!this.imgLoaded()) return;
+      const p = ctx.clampToImage(ctx.screenToImage(e.clientX, e.clientY));
+
+      // If no skeleton is active, create a new one
+      if (activeSkeleton == null) {
+        const id = this.idSeq++;
+        const newSkeleton: SkeletonAnn = {
+          id,
+          points: {},
+          edges: [],
+          labelId: ctx.activeLabelId,
+          color: ctx.activeColor,
+        };
+        this.skeletons.update(list => [...list, newSkeleton]);
+        this.selection.set({ type: 'skeleton', id });
+        activeSkeleton = id;
+      }
+
+      // Add a new keypoint
+      const skeleton = this.skeletons().find(s => s.id === activeSkeleton);
+      if (!skeleton) return;
+
+      const kid = `p${Object.keys(skeleton.points).length + 1}`;
+      const newPoint: Keypoint = { id: kid, x: p.x, y: p.y, v: 2 };
+
+      this.skeletons.update(list =>
+        list.map(s =>
+          s.id === activeSkeleton
+            ? {
+                ...s,
+                points: { ...s.points, [kid]: newPoint },
+                edges:
+                  Object.keys(s.points).length > 0
+                    ? [...s.edges, [kid, `p${Object.keys(s.points).length}`]]
+                    : s.edges,
+              }
+            : s
+        )
+      );
+
+      ctx.requestPaint();
+    },
+
+    onMove: (_e, _ctx) => {
+      // Optional: could add drag-to-move later
+    },
+
+    onUp: (_e, _ctx) => {},
+
+    drawOverlay: (g, ctx) => {
+      const sel = this.selection();
+      if (sel.type === 'skeleton' && sel.id != null) {
+        const s = ctx.skeletons.find(sk => sk.id === sel.id);
+        if (!s) return;
+
+        // Highlight skeleton points
+        g.save();
+        g.strokeStyle = '#ffeb3b';
+        g.fillStyle = '#ffeb3b';
+        for (const k of Object.values(s.points)) {
+          g.beginPath();
+          g.arc(
+            k.x * (g.canvas.width / this.imageWidth()),
+            k.y * (g.canvas.height / this.imageHeight()),
+            5,
+            0,
+            Math.PI * 2
+          );
+          g.stroke();
+        }
+        g.restore();
+      }
+    },
+  };
+}
 
   private makeStagePanTool(): Tool {
   return {
