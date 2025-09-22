@@ -1,37 +1,56 @@
 :host { display: contents; }
 
-/* App shell fills viewport */
+/* Material tokens -> readable aliases */
+:root, :host {
+  --ed-surface:               var(--mat-sys-surface);
+  --ed-surface-variant:       var(--mat-sys-surface-variant);
+  --ed-surface-container:     var(--mat-sys-surface-container);
+  --ed-surface-container-high:var(--mat-sys-surface-container-high);
+  --ed-outline-variant:       var(--mat-sys-outline-variant);
+  --ed-on-surface:            var(--mat-sys-on-surface);
+  --ed-on-surface-variant:    var(--mat-sys-on-surface-variant);
+  --ed-primary:               var(--mat-sys-primary);
+  --ed-on-primary:            var(--mat-sys-on-primary);
+
+  /* Stage background: still dark, just brighter than before */
+  /* Tweak the mix % to taste (higher % = lighter) */
+  --stage-bg: color-mix(in oklab, var(--ed-surface) 60%, #000 40%);
+
+  /* Canvas panel background (a bit brighter than stage to "pop") */
+  --canvas-bg: var(--ed-surface-container);
+}
+
+/* App shell fills the viewport */
 .layout { position: fixed; inset: 0; }
 
-/* Right sidebar (same as before) */
-.sidenav { width: 320px; background: #0f0f12; color: #e8eaed; border-left: 1px solid rgba(255,255,255,.06); }
-.sidenav-header { display:flex; align-items:center; gap:.25rem; padding:.5rem .5rem; border-bottom: 1px solid rgba(255,255,255,.06); }
-.sidenav-header h3 { font: 600 14px/1.2 system-ui, sans-serif; margin:0 .25rem 0 .5rem; }
-.sidenav .spacer { flex:1; }
-.sidenav .side-section { padding: .75rem .75rem 0; }
-.sidenav .field { display:grid; gap:.35rem; margin-bottom:.75rem; }
-.sidenav label { font-size:.85rem; opacity:.9; }
-.sidenav .label-swatch { display:inline-block; width:.85rem; height:.85rem; border-radius:2px; margin-right:.5rem; vertical-align:middle; }
-.sidenav .color-input { width: 100%; height: 2.25rem; background: transparent; border: 1px solid rgba(255,255,255,.12); border-radius:.5rem; }
-.sidenav .section { padding: .5rem .75rem .25rem; opacity:.9; }
-.sidenav .list { padding: .25rem .5rem 1rem; display: grid; gap: .25rem; }
-.sidenav .row { display:flex; align-items:center; gap:.5rem; padding:.4rem .5rem; border-radius:.5rem; cursor:pointer; }
-.sidenav .row:hover { background: rgba(255,255,255,.04); }
-.sidenav .row.active { background: rgba(255,140,0,.15); }
-.sidenav .row .sw { width:.85rem; height:.85rem; border-radius:2px; }
-.sidenav .row .name { flex:1; }
-.sidenav .row .meta { opacity:.7; font-size:.85rem; }
-.sidenav .empty { opacity:.6; padding:.5rem .75rem; }
+/* ---------- Tool rail ---------- */
+.tool-rail {
+  position: absolute; left: 12px; top: 12px; bottom: 12px; width: 44px; z-index: 4;
+  display: flex; flex-direction: column; gap: 6px; padding: 6px; border-radius: 12px;
+  background: var(--ed-surface-container-high);
+  border: 1px solid var(--ed-outline-variant);
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+}
+.tool-btn { width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--ed-on-surface-variant); cursor: pointer; display: grid; place-items: center;
+}
+.tool-btn:hover  { background: color-mix(in oklab, var(--canvas-bg) 28%, transparent); color: var(--ed-on-surface); }
+.tool-btn.active { background: color-mix(in oklab, var(--ed-primary) 16%, var(--canvas-bg));
+  color: var(--ed-on-surface);
+  outline: 1px solid color-mix(in oklab, var(--ed-primary) 55%, transparent);
+}
+.tool-btn.small { width: 28px; height: 28px; border-radius: 7px; }
+.rail-sep { height: 1px; background: var(--ed-outline-variant); margin: 2px; }
+.rail-fill { flex: 1; }
 
-/* Stage: a padded container (gutters) */
+/* ---------- Stage & desk (even gutters, darker but not black) ---------- */
 .stage {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  background: #000;
+  position: relative; width: 100%; height: 100%;
+  background: var(--stage-bg);
+  color: var(--ed-on-surface);
   overflow: hidden;
 
-  /* Symmetric gutters */
+  /* Symmetric gutters (adds the missing bottom gap) */
   --desk-pad-top:    24px;
   --desk-pad-bottom: 24px;
   --desk-pad-left:   64px; /* room for tool rail */
@@ -42,46 +61,75 @@
   box-sizing: border-box;
 }
 
-/* Desk is absolutely positioned and transformed from the stage's top-left */
+/* Desk transforms from top-left; centering handled in TS via stagePan */
 .desk {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform-origin: 0 0; /* IMPORTANT: pan math assumes top-left origin */
+  position: absolute; left: 0; top: 0;
+  transform-origin: 0 0;
   will-change: transform;
 }
 
+/* ---------- Right drawer (annotation list) ---------- */
+.ann-sidenav {
+  width: 320px;
+  background: var(--ed-surface-container);
+  color: var(--ed-on-surface);
+  border-left: 1px solid var(--ed-outline-variant);
+}
+.sidenav-header {
+  display: flex; align-items: center; gap: .25rem;
+  padding: .5rem .5rem; border-bottom: 1px solid var(--ed-outline-variant);
+}
+.sidenav-header h3 { font: 600 14px/1.2 system-ui, sans-serif; margin: 0 .25rem 0 .5rem; }
 
+.side-section { padding: .75rem .75rem 0; }
+.field { display: grid; gap: .35rem; margin-bottom: .75rem; }
+label { font-size: .85rem; color: var(--ed-on-surface-variant); }
+.color-input {
+  width: 100%; height: 2.25rem; border-radius: .5rem;
+  background: var(--ed-surface); border: 1px solid var(--ed-outline-variant);
+}
 
-/* Tunable max viewport size (Photopea-like gaps) */
+/* Lists inside drawer */
+.section { padding: .5rem .75rem .25rem; color: var(--ed-on-surface-variant); }
+.list    { padding: .25rem .5rem 1rem; display: grid; gap: .25rem; }
+.row {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .4rem .5rem; border-radius: .5rem; cursor: pointer;
+}
+.row:hover  { background: color-mix(in oklab, var(--canvas-bg) 35%, transparent); }
+.row.active { background: color-mix(in oklab, var(--ed-primary) 22%, var(--canvas-bg)); }
+.row .sw   { width: .85rem; height: .85rem; border-radius: 2px; }
+.row .name { flex: 1; }
+.row .meta { color: var(--ed-on-surface-variant); font-size: .85rem; }
+.empty     { color: var(--ed-on-surface-variant); padding: .5rem .75rem; }
+
+/* ---------- Canvas viewport: NO borders, just shadows ---------- */
 :root, :host {
   --cvp-max-w: min(1400px, 92vw);
   --cvp-max-h: min(900px,  88vh);
 }
 
 .canvas-viewport {
-  /* actual size bound via [style.width/height] from TS */
   max-width: var(--cvp-max-w);
   max-height: var(--cvp-max-h);
-  border: 1px solid rgba(255,255,255,.08);
+  border: none;                 /* no borders so it never looks like part of the image */
   border-radius: 12px;
-  background: #0b0b0f;
-  box-shadow: 0 20px 50px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.03);
+  background: var(--canvas-bg); /* brighter than stage for contrast */
+  /* soft layered outer shadows to float the canvas, no inner outlines */
+  box-shadow:
+    0 28px 70px rgba(0,0,0,.35),
+    0 10px 30px rgba(0,0,0,.24),
+    0 2px 6px rgba(0,0,0,.18);
   overflow: hidden;
 }
 
+/* Canvas layers */
 .canvas-wrap { position: relative; width: 100%; height: 100%; touch-action: none; }
-.canvas { display:block; width: 100%; height: 100%; }
+.canvas { display: block; width: 100%; height: 100%; }
 .base   { position: relative; }
 .overlay{ position: absolute; inset: 0; pointer-events: none; }
 
-/* Tool rail */
-.tool-rail { position: absolute; left: 12px; top: 12px; bottom: 12px; width: 44px; border-radius: 10px; padding: 6px;
-  display: flex; flex-direction: column; gap: 6px; background: rgba(32,32,36,.96); border: 1px solid rgba(255,255,255,.08); z-index: 4; }
-.elevation { box-shadow: 0 8px 24px rgba(0,0,0,.35); }
-.tool-btn { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; border: 0; background: transparent; color:#cfd3da; cursor:pointer; }
-.tool-btn:hover { background: rgba(255,255,255,.07); color:#fff; }
-.tool-btn.active { background: rgba(255,140,0,.22); color:#fff; outline: 1px solid rgba(255,140,0,.45); }
-.tool-btn.small { width:28px; height:28px; border-radius:7px; }
-.rail-sep { height: 1px; background: rgba(255,255,255,.08); margin: 2px; }
-.rail-fill { flex:1; }
+/* Swatch used in label select */
+.label-swatch {
+  display: inline-block; width: .85rem; height: .85rem; border-radius: 2px; margin-right: .5rem; vertical-align: middle;
+}
