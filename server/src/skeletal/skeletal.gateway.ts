@@ -24,7 +24,7 @@ export class SkeletalGateway {
         private readonly skeletalsQueue: Queue,
     ) {}
 
-    @SubscribeMessage("onTouch")
+    @SubscribeMessage("skeletalOnTouch")
     handleOnTouch(
         @MessageBody() payload: unknown,
         @ConnectedSocket() client: Socket,
@@ -53,7 +53,7 @@ export class SkeletalGateway {
         };
     }
 
-    @SubscribeMessage("unTouch")
+    @SubscribeMessage("skeletalUnTouch")
     handleUnTouch(
         @MessageBody() payload: unknown,
         @ConnectedSocket() client: Socket,
