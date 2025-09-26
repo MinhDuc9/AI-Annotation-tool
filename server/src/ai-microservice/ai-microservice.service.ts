@@ -8,16 +8,36 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { In, Repository } from "typeorm";
 import { Slide } from "src/slide/entities/slide.entity";
-
-const ANALYZE_ENDPOINT = "http://localhost:8000/analyze";
-const DEFAULT_TIMEOUT_MS = 100_000;
+import { ConfigService } from "@nestjs/config";
 
 @Injectable()
 export class AiMicroserviceService {
+    private readonly analyzeEndpoint: string;
+    private readonly requestTimeoutMs: number;
+
     constructor(
         @InjectRepository(Slide)
         private readonly slideRepository: Repository<Slide>,
-    ) {}
+        configService: ConfigService,
+    ) {
+        this.analyzeEndpoint =
+            configService.get<string>("AI_ANALYZE_ENDPOINT") ??
+            "http://localhost:8000/analyze";
+
+        const timeoutRaw = configService.get<unknown>("AI_ANALYZE_TIMEOUT_MS");
+        let timeoutValue: number | null = null;
+        if (typeof timeoutRaw === "number") {
+            timeoutValue = timeoutRaw;
+        } else if (typeof timeoutRaw === "string") {
+            const parsed = Number.parseInt(timeoutRaw, 10);
+            if (Number.isFinite(parsed)) {
+                timeoutValue = parsed;
+            }
+        }
+
+        this.requestTimeoutMs =
+            timeoutValue !== null && timeoutValue > 0 ? timeoutValue : 100_000;
+    }
 
     async analyzeSlides(projectId: string, slideIds: string[]) {
         const normalizedIds = Array.from(
@@ -54,7 +74,7 @@ export class AiMicroserviceService {
         const controller = new AbortController();
         const timeout = setTimeout(
             () => controller.abort(),
-            DEFAULT_TIMEOUT_MS,
+            this.requestTimeoutMs,
         );
 
         let parsedBody: unknown = null;
@@ -68,7 +88,7 @@ export class AiMicroserviceService {
                     })),
                 };
 
-                const response = await fetch(ANALYZE_ENDPOINT, {
+                const response = await fetch(this.analyzeEndpoint, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload),
