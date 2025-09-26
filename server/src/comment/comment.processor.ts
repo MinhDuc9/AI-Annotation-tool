@@ -6,56 +6,9 @@ import { Repository } from "typeorm";
 import { Comment } from "./entities/comment.entity";
 import { Slide } from "src/slide/entities/slide.entity";
 import { CommentGateway } from "./comment.gateway";
-
-export interface CreateCommentPayload {
-    slideId: string;
-    userId: string;
-    content: string;
-}
-
-export interface UpdateCommentPayload {
-    slideId: string;
-    userId: string;
-    commentId: string;
-    content: string;
-}
-
-export interface DeleteCommentPayload {
-    slideId: string;
-    userId: string;
-    commentId: string;
-}
+import { parseWsPayload, pickString } from "src/common/ws.utils";
 
 export type CommentJobName = "create" | "update" | "delete";
-
-// Type guards for runtime validation & compile-time narrowing
-function isCreatePayload(d: unknown): d is CreateCommentPayload {
-    const o = d as Record<string, unknown>;
-    return (
-        typeof o?.slideId === "string" &&
-        typeof o?.userId === "string" &&
-        typeof o?.content === "string"
-    );
-}
-
-function isUpdatePayload(d: unknown): d is UpdateCommentPayload {
-    const o = d as Record<string, unknown>;
-    return (
-        typeof o?.slideId === "string" &&
-        typeof o?.userId === "string" &&
-        typeof o?.commentId === "string" &&
-        typeof o?.content === "string"
-    );
-}
-
-function isDeletePayload(d: unknown): d is DeleteCommentPayload {
-    const o = d as Record<string, unknown>;
-    return (
-        typeof o?.slideId === "string" &&
-        typeof o?.userId === "string" &&
-        typeof o?.commentId === "string"
-    );
-}
 
 @Processor("comments", { concurrency: 20 })
 export class CommentsProcessor extends WorkerHost {
@@ -85,92 +38,178 @@ export class CommentsProcessor extends WorkerHost {
 
     async process(job: Job<unknown>) {
         switch (job.name as CommentJobName) {
-            case "create": {
-                const data = job.data;
-                if (!isCreatePayload(data))
-                    throw new UnrecoverableError("Invalid create payload");
-
-                await this.ensureSlide(data.slideId);
-
-                const saved = await this.commentRepository.save({
-                    slideId: data.slideId,
-                    userId: data.userId,
-                    content: data.content,
-                });
-
-                this.gateway.server
-                    .to(`slide:${data.slideId}`)
-                    .emit("commentCreated", saved);
-
+            case "create":
+                await this.handleCreate(job);
                 return;
-            }
 
-            case "update": {
-                const data = job.data;
-                if (!isUpdatePayload(data))
-                    throw new UnrecoverableError("Invalid update payload");
-
-                await this.ensureSlide(data.slideId);
-
-                const comment = await this.commentRepository.findOne({
-                    where: { id: data.commentId, slideId: data.slideId },
-                });
-                if (!comment) {
-                    throw new UnrecoverableError("Comment not found");
-                }
-                if (comment.userId !== data.userId) {
-                    throw new UnrecoverableError(
-                        "You can only update your own comment",
-                    );
-                }
-
-                comment.content = data.content;
-                const saved = await this.commentRepository.save(comment);
-
-                this.gateway.server
-                    .to(`slide:${data.slideId}`)
-                    .emit("commentUpdated", saved);
-
+            case "update":
+                await this.handleUpdate(job);
                 return;
-            }
 
-            case "delete": {
-                const data = job.data;
-                if (!isDeletePayload(data)) {
-                    throw new UnrecoverableError("Invalid delete payload");
-                }
-
-                await this.ensureSlide(data.slideId);
-
-                const comment = await this.commentRepository.findOne({
-                    where: { id: data.commentId, slideId: data.slideId },
-                });
-
-                if (!comment) {
-                    throw new UnrecoverableError("Comment not found");
-                }
-
-                if (comment.userId !== data.userId) {
-                    throw new UnrecoverableError(
-                        "You can only delete your own comment",
-                    );
-                }
-
-                await this.commentRepository.delete(data.commentId);
-
-                this.gateway.server
-                    .to(`slide:${data.slideId}`)
-                    .emit("commentDeleted", {
-                        id: data.commentId,
-                        slideId: data.slideId,
-                    });
-
+            case "delete":
+                await this.handleDelete(job);
                 return;
-            }
 
-            default: {
+            default:
                 throw new UnrecoverableError(`Unknown job name: ${job.name}`);
-            }
         }
+    }
+
+    private parseJobPayload(
+        jobData: unknown,
+        errorMessage: string,
+    ): Record<string, unknown> {
+        const payload = parseWsPayload(jobData);
+        if (!payload) {
+            throw new UnrecoverableError(errorMessage);
+        }
+        return payload;
+    }
+
+    private pickRequiredString(
+        payload: Record<string, unknown>,
+        key: string,
+        errorMessage: string,
+    ): string {
+        if (typeof payload[key] !== "string") {
+            throw new UnrecoverableError(errorMessage);
+        }
+
+        return pickString(payload, key);
+    }
+
+    private async requireComment(
+        slideId: string,
+        commentId: string,
+    ): Promise<Comment> {
+        const comment = await this.commentRepository.findOne({
+            where: { id: commentId, slideId },
+        });
+
+        if (!comment) {
+            throw new UnrecoverableError("Comment not found");
+        }
+
+        return comment;
+    }
+
+    private async handleCreate(job: Job<unknown>): Promise<void> {
+        const payload = this.parseJobPayload(
+            job.data,
+            "Invalid create payload",
+        );
+
+        const slideId = this.pickRequiredString(
+            payload,
+            "slideId",
+            "Invalid create payload",
+        );
+        const userId = this.pickRequiredString(
+            payload,
+            "userId",
+            "Invalid create payload",
+        );
+        const content = this.pickRequiredString(
+            payload,
+            "content",
+            "Invalid create payload",
+        );
+
+        await this.ensureSlide(slideId);
+
+        const saved = await this.commentRepository.save({
+            slideId,
+            userId,
+            content,
+        });
+
+        this.gateway.server
+            .to(`slide:${slideId}`)
+            .emit("commentCreated", saved);
+    }
+
+    private async handleUpdate(job: Job<unknown>): Promise<void> {
+        const payload = this.parseJobPayload(
+            job.data,
+            "Invalid update payload",
+        );
+
+        const slideId = this.pickRequiredString(
+            payload,
+            "slideId",
+            "Invalid update payload",
+        );
+        const userId = this.pickRequiredString(
+            payload,
+            "userId",
+            "Invalid update payload",
+        );
+        const commentId = this.pickRequiredString(
+            payload,
+            "commentId",
+            "Invalid update payload",
+        );
+        const content = this.pickRequiredString(
+            payload,
+            "content",
+            "Invalid update payload",
+        );
+
+        await this.ensureSlide(slideId);
+
+        const comment = await this.requireComment(slideId, commentId);
+
+        if (comment.userId !== userId) {
+            throw new UnrecoverableError(
+                "You can only update your own comment",
+            );
+        }
+
+        comment.content = content;
+        const saved = await this.commentRepository.save(comment);
+
+        this.gateway.server
+            .to(`slide:${slideId}`)
+            .emit("commentUpdated", saved);
+    }
+
+    private async handleDelete(job: Job<unknown>): Promise<void> {
+        const payload = this.parseJobPayload(
+            job.data,
+            "Invalid delete payload",
+        );
+
+        const slideId = this.pickRequiredString(
+            payload,
+            "slideId",
+            "Invalid delete payload",
+        );
+        const userId = this.pickRequiredString(
+            payload,
+            "userId",
+            "Invalid delete payload",
+        );
+        const commentId = this.pickRequiredString(
+            payload,
+            "commentId",
+            "Invalid delete payload",
+        );
+
+        await this.ensureSlide(slideId);
+
+        const comment = await this.requireComment(slideId, commentId);
+
+        if (comment.userId !== userId) {
+            throw new UnrecoverableError(
+                "You can only delete your own comment",
+            );
+        }
+
+        await this.commentRepository.delete(commentId);
+
+        this.gateway.server.to(`slide:${slideId}`).emit("commentDeleted", {
+            id: commentId,
+            slideId,
+        });
     }
 }
