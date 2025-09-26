@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from typing import List, Dict, Any, Optional
 from contextlib import asynccontextmanager
-import tempfile, os, mimetypes, httpx, re, json, asyncio
+from pathlib import Path
+import tempfile, os, mimetypes, httpx, re, json, asyncio, shutil
 import uvicorn
 
 # Your analyzer (expects a local image path and returns a dict result)
@@ -16,6 +16,9 @@ from pipeline import analyze_image
 URL_RE = re.compile(r'https?://[^\s"\'<>]+')
 MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", "5"))
 TIMEOUT = httpx.Timeout(20.0, connect=10.0)  # seconds
+LOCAL_STATIC_PREFIX = os.getenv("LOCAL_STATIC_PREFIX", "/uploads/")
+_DEFAULT_UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "uploads"
+LOCAL_IMAGE_ROOT = Path(os.getenv("LOCAL_IMAGE_ROOT", str(_DEFAULT_UPLOAD_ROOT))).resolve()
 
 
 # --------- HELPERS ---------
@@ -37,8 +40,12 @@ def extract_urls(body_bytes: bytes, content_type: str) -> List[str]:
             if isinstance(payload, list):
                 urls = [str(u) for u in payload]
             elif isinstance(payload, dict):
-                if "urls" in payload and isinstance(payload["urls"], list):
-                    urls = [str(u) for u in payload["urls"]]
+                if "urls" in payload:
+                    value = payload["urls"]
+                    if isinstance(value, list):
+                        urls = [str(u) for u in value]
+                    else:
+                        urls = [str(value)]
                 elif "text" in payload:
                     urls = URL_RE.findall(str(payload["text"]))
         except Exception:
@@ -51,14 +58,12 @@ def extract_urls(body_bytes: bytes, content_type: str) -> List[str]:
 
 
 def normalize_urls(urls: List[str]) -> List[str]:
-    """Keep http/https only, strip whitespace, and deduplicate preserving order."""
+    """Strip whitespace and deduplicate while preserving order."""
     out: List[str] = []
     seen = set()
     for u in urls:
         u2 = u.strip()
         if not u2:
-            continue
-        if not (u2.startswith("http://") or u2.startswith("https://")):
             continue
         if u2 in seen:
             continue
@@ -67,29 +72,63 @@ def normalize_urls(urls: List[str]) -> List[str]:
     return out
 
 
-async def download_to_temp(client: httpx.AsyncClient, url: str) -> str:
-    """Fetch image and write to a temp file; return path."""
-    r = await client.get(url)
-    if r.status_code != 200:
-        raise HTTPException(400, f"Failed to fetch image: {url} (status {r.status_code})")
-    ctype = r.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    if not ctype.startswith("image/"):
-        raise HTTPException(400, f"URL does not return an image (Content-Type={ctype!r}): {url}")
+def _resolve_local_path(resource: str) -> Optional[Path]:
+    if resource.startswith("file://"):
+        return Path(resource[7:])
 
-    # Guess extension from content-type or URL
-    ext = mimetypes.guess_extension(ctype)
-    if not ext:
-        for cand in (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"):
-            if url.lower().endswith(cand):
-                ext = cand
-                break
-    if not ext:
-        ext = ".img"
+    candidate = Path(resource)
+    if candidate.is_absolute() and candidate.exists():
+        return candidate
 
-    # Write to a NamedTemporaryFile
-    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as f:
-        f.write(r.content)
-        return f.name
+    rel = resource
+    if LOCAL_STATIC_PREFIX and resource.startswith(LOCAL_STATIC_PREFIX):
+        rel = resource[len(LOCAL_STATIC_PREFIX) :]
+    rel = rel.lstrip("/")
+    if rel.startswith("uploads/"):
+        rel = rel[len("uploads/") :]
+    if not rel:
+        return None
+
+    return (LOCAL_IMAGE_ROOT / rel).resolve()
+
+
+async def download_to_temp(client: httpx.AsyncClient, resource: str) -> str:
+    """Fetch remote image or copy local image into a temp file and return the path."""
+    if resource.startswith("http://") or resource.startswith("https://"):
+        r = await client.get(resource)
+        if r.status_code != 200:
+            raise HTTPException(
+                400,
+                f"Failed to fetch image: {resource} (status {r.status_code})",
+            )
+        ctype = r.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if not ctype.startswith("image/"):
+            raise HTTPException(
+                400,
+                f"URL does not return an image (Content-Type={ctype!r}): {resource}",
+            )
+
+        ext = mimetypes.guess_extension(ctype)
+        if not ext:
+            for cand in (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"):
+                if resource.lower().endswith(cand):
+                    ext = cand
+                    break
+        if not ext:
+            ext = ".img"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as f:
+            f.write(r.content)
+            return f.name
+
+    local_path = _resolve_local_path(resource)
+    if not local_path or not local_path.exists():
+        raise HTTPException(400, f"Local image not found: {resource}")
+
+    ext = local_path.suffix or ".img"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp, local_path.open("rb") as src:
+        shutil.copyfileobj(src, tmp)
+        return tmp.name
 
 
 async def _analyze_single(client: httpx.AsyncClient, url: str) -> Dict[str, Any]:
@@ -112,19 +151,15 @@ async def run_pipeline(client: httpx.AsyncClient, urls: List[str]) -> List[Dict[
         async with sem:
             try:
                 return await _analyze_single(client, u)
-            except HTTPException:
-                # passthrough as a structured error
-                raise
+            except HTTPException as he:
+                return {"url": u, "error": he.detail}
             except Exception as e:
                 return {"url": u, "error": str(e)}
 
     tasks = [asyncio.create_task(guarded(u)) for u in urls]
     results: List[Dict[str, Any]] = []
     for t in asyncio.as_completed(tasks):
-        try:
-            results.append(await t)
-        except HTTPException as he:
-            results.append({"error": he.detail})
+        results.append(await t)
     return results
 
 
@@ -163,7 +198,7 @@ async def analyze(request: Request):
 
     urls = normalize_urls(extract_urls(body, request.headers.get("content-type", "")))
     if not urls:
-        raise HTTPException(400, "No valid http/https URLs found in body.")
+        raise HTTPException(400, "No valid image references found in body.")
 
     results = await run_pipeline(request.app.state.http, urls)
     return {"results": results}
