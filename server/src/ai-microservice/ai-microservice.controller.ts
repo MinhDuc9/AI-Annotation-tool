@@ -1,15 +1,5 @@
-import {
-    Controller,
-    Get,
-    Post,
-    Body,
-    Patch,
-    Param,
-    Delete,
-} from "@nestjs/common";
+import { Controller, Get, Param } from "@nestjs/common";
 import { AiMicroserviceService } from "./ai-microservice.service";
-import { CreateAiMicroserviceDto } from "./dto/create-ai-microservice.dto";
-import { UpdateAiMicroserviceDto } from "./dto/update-ai-microservice.dto";
 
 @Controller("ai-microservice")
 export class AiMicroserviceController {
@@ -17,31 +7,11 @@ export class AiMicroserviceController {
         private readonly aiMicroserviceService: AiMicroserviceService,
     ) {}
 
-    @Post()
-    create(@Body() createAiMicroserviceDto: CreateAiMicroserviceDto) {
-        return this.aiMicroserviceService.create(createAiMicroserviceDto);
-    }
-
-    @Get()
-    findAll() {
-        return this.aiMicroserviceService.findAll();
-    }
-
-    @Get(":id")
-    findOne(@Param("id") id: string) {
-        return this.aiMicroserviceService.findOne(+id);
-    }
-
-    @Patch(":id")
-    update(
-        @Param("id") id: string,
-        @Body() updateAiMicroserviceDto: UpdateAiMicroserviceDto,
+    @Get("ai_auto/:project_id/:slide_id")
+    analyzeSlide(
+        @Param("project_id") projectId: string,
+        @Param("slide_id") slideId: string,
     ) {
-        return this.aiMicroserviceService.update(+id, updateAiMicroserviceDto);
-    }
-
-    @Delete(":id")
-    remove(@Param("id") id: string) {
-        return this.aiMicroserviceService.remove(+id);
+        return this.aiMicroserviceService.analyzeSlide(projectId, slideId);
     }
 }

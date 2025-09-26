@@ -24,7 +24,7 @@ import { BoundingBoxModule } from "./bounding-box/bounding-box.module";
 import { BoundingBox } from "./bounding-box/entities/bounding-box.entity";
 import { SkeletalModule } from "./skeletal/skeletal.module";
 import { Skeletal } from "./skeletal/entities/skeletal.entity";
-import { AiMicroserviceModule } from './ai-microservice/ai-microservice.module';
+import { AiMicroserviceModule } from "./ai-microservice/ai-microservice.module";
 
 type BullModuleStatics = {
     forRoot: (options: BullRootModuleOptions) => DynamicModule;
