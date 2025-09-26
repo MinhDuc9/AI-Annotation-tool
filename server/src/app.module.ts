@@ -77,6 +77,7 @@ const TypedBullModule = BullModule as unknown as BullModuleStatics;
         TypedBullModule.registerQueue(
             { name: "comments" },
             { name: "boundingBoxes" },
+            { name: "skeletals" },
         ),
         UserModule,
         ProjectModule,
