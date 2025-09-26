@@ -74,7 +74,10 @@ const TypedBullModule = BullModule as unknown as BullModuleStatics;
                 },
             }),
         }),
-        TypedBullModule.registerQueue({ name: "comments" }),
+        TypedBullModule.registerQueue(
+            { name: "comments" },
+            { name: "boundingBoxes" },
+        ),
         UserModule,
         ProjectModule,
         ProjectUserRoleModule,
