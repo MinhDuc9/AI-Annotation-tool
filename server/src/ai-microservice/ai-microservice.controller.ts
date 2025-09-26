@@ -1,5 +1,6 @@
-import { Controller, Get, Param } from "@nestjs/common";
+import { Body, Controller, Param, Post } from "@nestjs/common";
 import { AiMicroserviceService } from "./ai-microservice.service";
+import { AnalyzeSlidesDto } from "./dto/analyze-slides.dto";
 
 @Controller("ai-microservice")
 export class AiMicroserviceController {
@@ -7,11 +8,14 @@ export class AiMicroserviceController {
         private readonly aiMicroserviceService: AiMicroserviceService,
     ) {}
 
-    @Get("ai_auto/:project_id/:slide_id")
-    analyzeSlide(
+    @Post("ai_auto/:project_id")
+    analyzeSlides(
         @Param("project_id") projectId: string,
-        @Param("slide_id") slideId: string,
+        @Body() body: AnalyzeSlidesDto,
     ) {
-        return this.aiMicroserviceService.analyzeSlide(projectId, slideId);
+        return this.aiMicroserviceService.analyzeSlides(
+            projectId,
+            body.slideIds,
+        );
     }
 }

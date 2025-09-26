@@ -22,54 +22,106 @@ LOCAL_IMAGE_ROOT = Path(os.getenv("LOCAL_IMAGE_ROOT", str(_DEFAULT_UPLOAD_ROOT))
 
 
 # --------- HELPERS ---------
-def extract_urls(body_bytes: bytes, content_type: str) -> List[str]:
+def extract_slide_entries(body_bytes: bytes, content_type: str) -> List[Dict[str, str]]:
     """
-    Extract URLs from JSON or fallback to regex on raw text.
-    Accepts:
-      - JSON array of urls: ["https://...","https://..."]
-      - JSON object: {"urls":[...]} or {"text":"..."}
-      - Any other content: scan raw text for URLs
+    Parse incoming payload into a list of slide references with optional ids.
+    Supports:
+      - {"slides": [{"slideId": "...", "url": "..."}, ...]}
+      - {"urls": ["https://..."], "ids": ["..."]}
+      - JSON arrays of either strings or objects with "url"
+      - Fallback to scanning text for URLs
     """
     text = body_bytes.decode("utf-8", errors="ignore")
     ct = (content_type or "").split(";", 1)[0].strip().lower()
+    entries: List[Dict[str, str]] = []
 
-    urls: List[str] = []
+    def push(url: Any, slide_id: Any = "") -> None:
+        if url is None:
+            return
+        url_str = str(url).strip()
+        if not url_str:
+            return
+        slide_id_str = ""
+        if slide_id is not None:
+            slide_id_str = str(slide_id).strip()
+        entries.append({"slide_id": slide_id_str, "url": url_str})
+
+    payload: Any = None
     if ct == "application/json":
         try:
             payload = json.loads(text)
-            if isinstance(payload, list):
-                urls = [str(u) for u in payload]
-            elif isinstance(payload, dict):
-                if "urls" in payload:
-                    value = payload["urls"]
-                    if isinstance(value, list):
-                        urls = [str(u) for u in value]
-                    else:
-                        urls = [str(value)]
-                elif "text" in payload:
-                    urls = URL_RE.findall(str(payload["text"]))
         except Exception:
-            # Fall back to regex if JSON parse fails
-            urls = URL_RE.findall(text)
-    else:
-        urls = URL_RE.findall(text)
+            payload = None
 
-    return urls
+    if isinstance(payload, dict):
+        slides_value = payload.get("slides")
+        if isinstance(slides_value, list):
+            for item in slides_value:
+                if not isinstance(item, dict):
+                    continue
+                url = (
+                    item.get("url")
+                    or item.get("image")
+                    or item.get("imageRoute")
+                )
+                if not url:
+                    continue
+                slide_id = (
+                    item.get("slideId")
+                    or item.get("slide_id")
+                    or item.get("id")
+                )
+                push(url, slide_id)
+            if entries:
+                return entries
 
+        urls_value = payload.get("urls")
+        if urls_value is not None:
+            if isinstance(urls_value, list):
+                ids_value = payload.get("ids")
+                for idx, url in enumerate(urls_value):
+                    slide_id = None
+                    if isinstance(ids_value, list) and idx < len(ids_value):
+                        slide_id = ids_value[idx]
+                    push(url, slide_id)
+            else:
+                push(urls_value)
+            if entries:
+                return entries
 
-def normalize_urls(urls: List[str]) -> List[str]:
-    """Strip whitespace and deduplicate while preserving order."""
-    out: List[str] = []
-    seen = set()
-    for u in urls:
-        u2 = u.strip()
-        if not u2:
-            continue
-        if u2 in seen:
-            continue
-        seen.add(u2)
-        out.append(u2)
-    return out
+        text_value = payload.get("text")
+        if text_value is not None:
+            for url in URL_RE.findall(str(text_value)):
+                push(url)
+            if entries:
+                return entries
+
+    elif isinstance(payload, list):
+        for idx, item in enumerate(payload):
+            if isinstance(item, dict):
+                url = (
+                    item.get("url")
+                    or item.get("image")
+                    or item.get("imageRoute")
+                )
+                if not url:
+                    continue
+                slide_id = (
+                    item.get("slideId")
+                    or item.get("slide_id")
+                    or item.get("id")
+                    or idx
+                )
+                push(url, slide_id)
+            else:
+                push(item)
+        if entries:
+            return entries
+
+    for url in URL_RE.findall(text):
+        push(url)
+
+    return entries
 
 
 def _resolve_local_path(resource: str) -> Optional[Path]:
@@ -131,12 +183,14 @@ async def download_to_temp(client: httpx.AsyncClient, resource: str) -> str:
         return tmp.name
 
 
-async def _analyze_single(client: httpx.AsyncClient, url: str) -> Dict[str, Any]:
+async def _analyze_single(client: httpx.AsyncClient, slide: Dict[str, str]) -> Dict[str, Any]:
+    url = slide.get("url", "")
+    slide_id = slide.get("slide_id", "")
     tmp_path = await download_to_temp(client, url)
     try:
         # analyze_image is likely CPU/GPU-bound; run in a thread to avoid blocking loop
         result = await run_in_threadpool(analyze_image, tmp_path)
-        return {"url": url, "result": result}
+        return {"slideId": slide_id, "url": url, "result": result}
     finally:
         try:
             os.remove(tmp_path)
@@ -144,22 +198,30 @@ async def _analyze_single(client: httpx.AsyncClient, url: str) -> Dict[str, Any]
             pass
 
 
-async def run_pipeline(client: httpx.AsyncClient, urls: List[str]) -> List[Dict[str, Any]]:
+async def run_pipeline(client: httpx.AsyncClient, slides: List[Dict[str, str]]) -> List[Dict[str, Any]]:
     sem = asyncio.Semaphore(MAX_CONCURRENCY)
 
-    async def guarded(u: str) -> Dict[str, Any]:
+    async def guarded(slide: Dict[str, str]) -> Dict[str, Any]:
         async with sem:
             try:
-                return await _analyze_single(client, u)
+                return await _analyze_single(client, slide)
             except HTTPException as he:
-                return {"url": u, "error": he.detail}
+                return {
+                    "slideId": slide.get("slide_id", ""),
+                    "url": slide.get("url", ""),
+                    "error": he.detail,
+                }
             except Exception as e:
-                return {"url": u, "error": str(e)}
+                return {
+                    "slideId": slide.get("slide_id", ""),
+                    "url": slide.get("url", ""),
+                    "error": str(e),
+                }
 
-    tasks = [asyncio.create_task(guarded(u)) for u in urls]
     results: List[Dict[str, Any]] = []
-    for t in asyncio.as_completed(tasks):
-        results.append(await t)
+    for slide in slides:
+        # Process sequentially to avoid race conditions inside shared model instances
+        results.append(await guarded(slide))
     return results
 
 
@@ -196,11 +258,11 @@ async def analyze(request: Request):
     if not body:
         raise HTTPException(400, "Empty request body.")
 
-    urls = normalize_urls(extract_urls(body, request.headers.get("content-type", "")))
-    if not urls:
+    slides = extract_slide_entries(body, request.headers.get("content-type", ""))
+    if not slides:
         raise HTTPException(400, "No valid image references found in body.")
 
-    results = await run_pipeline(request.app.state.http, urls)
+    results = await run_pipeline(request.app.state.http, slides)
     return {"results": results}
 
 
