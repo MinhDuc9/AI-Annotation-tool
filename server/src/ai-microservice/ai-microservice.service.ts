@@ -13,7 +13,7 @@ import { ConfigService } from "@nestjs/config";
 @Injectable()
 export class AiMicroserviceService {
     private readonly analyzeEndpoint: string;
-    private readonly requestTimeoutMs: number;
+    private readonly requestTimeoutMs: number | null;
 
     constructor(
         @InjectRepository(Slide)
@@ -36,7 +36,7 @@ export class AiMicroserviceService {
         }
 
         this.requestTimeoutMs =
-            timeoutValue !== null && timeoutValue > 0 ? timeoutValue : 100_000;
+            timeoutValue !== null && timeoutValue > 0 ? timeoutValue : null;
     }
 
     async analyzeSlides(projectId: string, slideIds: string[]) {
@@ -71,11 +71,16 @@ export class AiMicroserviceService {
         );
         const slidesWithoutImages = slides.filter((slide) => !slide.imageRoute);
 
-        const controller = new AbortController();
-        const timeout = setTimeout(
-            () => controller.abort(),
-            this.requestTimeoutMs,
-        );
+        let controller: AbortController | null = null;
+        let timeout: NodeJS.Timeout | null = null;
+        if (this.requestTimeoutMs !== null) {
+            const localController = new AbortController();
+            controller = localController;
+            timeout = setTimeout(
+                () => localController.abort(),
+                this.requestTimeoutMs,
+            );
+        }
 
         let parsedBody: unknown = null;
 
@@ -92,7 +97,7 @@ export class AiMicroserviceService {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload),
-                    signal: controller.signal,
+                    signal: controller?.signal,
                 });
 
                 const rawBody = await response.text();
@@ -127,7 +132,9 @@ export class AiMicroserviceService {
                 `Failed to reach analyze service: ${(error as Error).message || "unknown error"}`,
             );
         } finally {
-            clearTimeout(timeout);
+            if (timeout) {
+                clearTimeout(timeout);
+            }
         }
 
         const slidesById = new Map<string, Slide>(
