@@ -76,14 +76,20 @@ def analyze_image(image_path: str):
             species_info = _classify_species(crop_img)
 
         # Store bbox
+        category_value = species_info["name"] or "unknown"
+        color_value = species_info["color"] or "#000000"
+
         bbox_list.append({
+            "id": bb_id,
             "bb_id": bb_id,
-            "x": float(x1),
-            "y": float(y2),
-            "width": float(bbox_w),
-            "height": float(bbox_h),
-            "species_name": species_info["name"],
-            "colour": species_info["color"]
+            "x_pos": float(x1),
+            "y_pos": float(y1),
+            "x_long": float(bbox_w),
+            "y_long": float(bbox_h),
+            "color": color_value,
+            "colour": color_value,
+            "category": category_value,
+            "species_name": category_value,
         })
 
         # === Pose estimation ===
@@ -112,11 +118,18 @@ def analyze_image(image_path: str):
                     kp_name = KEYPOINT_NAMES.get(k_id, "")
                     kp_map[k_id] = kp_uuid
                     keypoints_dict[kp_uuid] = {
+                        "id": kp_uuid,
                         "key_id": kp_uuid,
+                        "x_pos": gx,
+                        "y_pos": gy,
                         "x": gx,
                         "y": gy,
-                        "name": kp_name,
-                        "colour": species_info["color"]
+                        "category": kp_name or "unknown",
+                        "name": kp_name or "unknown",
+                        "color": color_value,
+                        "colour": color_value,
+                        "key_points": [],
+                        "key_point_to": [],
                     }
 
                 # link edges
@@ -125,20 +138,29 @@ def analyze_image(image_path: str):
                         src_id = kp_map[i]
                         dst_id = kp_map[j]
                         entry = keypoints_dict[src_id]
-                        entry.setdefault("key_point_to", [])
-                        if dst_id not in entry["key_point_to"]:
-                            entry["key_point_to"].append(dst_id)
+                        key_points = entry["key_points"]
+                        if dst_id not in key_points:
+                            key_points.append(dst_id)
+                        key_point_to = entry["key_point_to"]
+                        if dst_id not in key_point_to:
+                            key_point_to.append(dst_id)
 
-        keypoints_list = list(keypoints_dict.values())
+        keypoints_list = []
+        for entry in keypoints_dict.values():
+            if not entry["key_points"]:
+                entry["key_points"] = None
+                entry["key_point_to"] = None
+            keypoints_list.append(entry)
 
         skeletal_list.append({
             "bb_id": bb_id,
-            "keypoints": keypoints_list
+            "bounding_box_id": bb_id,
+            "keypoints": keypoints_list,
         })
 
     # === Final output ===
     return {
         "image_id": str(uuid.uuid4()),
         "bbox": bbox_list,
-        "skeletal": skeletal_list
+        "skeletal": skeletal_list,
     }

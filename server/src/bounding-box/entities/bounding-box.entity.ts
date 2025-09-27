@@ -35,9 +35,9 @@ export class BoundingBox {
     @Column({ type: "float" })
     y_long: number;
 
-    @Column({ type: "varchar" })
+    @Column({ type: "varchar", default: "#000000" })
     color: string;
 
-    @Column({ type: "varchar" })
+    @Column({ type: "varchar", default: "unknown" })
     category: string;
 }

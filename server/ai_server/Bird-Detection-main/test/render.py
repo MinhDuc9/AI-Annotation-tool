@@ -41,42 +41,76 @@ for idx, item in enumerate(data["results"]):
 
     image = cv2.imread(input_path)
 
-    if result:  # Only process if detection results exist
-        for box in result:
-            # bbox is a list → iterate through it
-            for bb in box["bbox"]:
-                x = int(bb["x"])
-                y = int(bb["y"])
-                w = int(bb["width"])
-                h = int(bb["height"])
+    if isinstance(result, dict) and result:  # Only process if detection results exist
+        bounding_boxes = result.get("bbox", [])
+        skeletals = result.get("skeletal", [])
 
-                # Draw bounding box
-                cv2.rectangle(image, (x, y - h), (x + w, y), (0, 255, 0), 2)
+        # Group skeletals by their bounding box id for easier lookup
+        skeletals_by_box = {}
+        for skel in skeletals:
+            box_id = skel.get("bounding_box_id") or skel.get("bb_id")
+            if not isinstance(box_id, str):
+                continue
+            skeletals_by_box.setdefault(box_id, []).extend(
+                skel.get("keypoints", [])
+            )
 
-                # Draw species name if available
-                if "species_name" in bb:
-                    cv2.putText(
-                        image,
-                        bb["species_name"],
-                        (x, y - h - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,
-                        (0, 255, 0),
-                        2,
-                    )
+        for bb in bounding_boxes:
+            box_id = bb.get("id") or bb.get("bb_id")
+            if not isinstance(box_id, str):
+                continue
 
-            # Keypoints
-            if "keypoints" in box:
-                kp_map = {kp["id"]: kp for kp in box["keypoints"]}
-                for kp in box["keypoints"]:
-                    cv2.circle(image, (int(kp["x"]), int(kp["y"])), 4, (0, 0, 255), -1)
+            x = int(bb.get("x_pos", 0))
+            y = int(bb.get("y_pos", 0))
+            w = int(bb.get("x_long", 0))
+            h = int(bb.get("y_long", 0))
 
-                # Skeleton edges
-                for edge in box.get("skeleton", []):
-                    if edge["from"] in kp_map and edge["to"] in kp_map:
-                        p1 = (int(kp_map[edge["from"]]["x"]), int(kp_map[edge["from"]]["y"]))
-                        p2 = (int(kp_map[edge["to"]]["x"]), int(kp_map[edge["to"]]["y"]))
-                        cv2.line(image, p1, p2, (255, 0, 0), 2)
+            # Draw bounding box
+            cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+            label = bb.get("category")
+            if isinstance(label, str) and label:
+                cv2.putText(
+                    image,
+                    label,
+                    (x, max(0, y - 10)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 255, 0),
+                    2,
+                )
+
+            keypoints = skeletals_by_box.get(box_id, [])
+            kp_map = {
+                kp.get("id") or kp.get("key_id"): kp
+                for kp in keypoints
+                if isinstance(kp.get("id") or kp.get("key_id"), str)
+            }
+
+            for kp in keypoints:
+                try:
+                    px = int(kp.get("x_pos", kp.get("x", 0)))
+                    py = int(kp.get("y_pos", kp.get("y", 0)))
+                except (TypeError, ValueError):
+                    continue
+                cv2.circle(image, (px, py), 4, (0, 0, 255), -1)
+
+                connections = kp.get("key_points") or kp.get("key_point_to")
+                if not connections:
+                    continue
+                for dst_id in connections:
+                    dst = kp_map.get(dst_id)
+                    if not dst:
+                        continue
+                    try:
+                        p1 = (px, py)
+                        p2 = (
+                            int(dst.get("x_pos", dst.get("x", 0))),
+                            int(dst.get("y_pos", dst.get("y", 0))),
+                        )
+                    except (TypeError, ValueError):
+                        continue
+                    cv2.line(image, p1, p2, (255, 0, 0), 2)
 
 
     cv2.imwrite(output_path, image)
