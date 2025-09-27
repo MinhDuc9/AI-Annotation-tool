@@ -10,6 +10,7 @@ import type { Server, Socket } from "socket.io";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
 import { parseWsPayload, pickString } from "src/common/ws.utils";
+import { CreateSkeletalDto } from "./dto/create-skeletal.dto";
 
 @WebSocketGateway({
     cors: {
@@ -185,6 +186,116 @@ export class SkeletalGateway {
         return {
             event: "queued",
             data: { action: "updateState", slideId, skeletalId },
+        };
+    }
+
+    @SubscribeMessage("createSkeletal")
+    async handleCreateSkeletal(
+        @MessageBody() payload: unknown,
+    ): Promise<WsResponse<Record<string, unknown>>> {
+        const obj = parseWsPayload(payload);
+        if (!obj) {
+            return {
+                event: "error",
+                data: { message: "Invalid payload format" },
+            };
+        }
+
+        const slideId = pickString(obj, "slideId");
+        if (!slideId) {
+            return {
+                event: "error",
+                data: { message: "slideId is required" },
+            };
+        }
+
+        const numericKeys: Array<keyof CreateSkeletalDto> = ["x_pos", "y_pos"];
+
+        const createPayload: Record<string, unknown> = { slideId };
+        for (const key of numericKeys) {
+            const value = obj[key];
+            if (typeof value !== "number") {
+                return {
+                    event: "error",
+                    data: { message: `${String(key)} must be a number` },
+                };
+            }
+            createPayload[key] = value;
+        }
+
+        if (obj.key_points !== undefined) {
+            if (
+                obj.key_points !== null &&
+                (!Array.isArray(obj.key_points) ||
+                    obj.key_points.some((kp) => typeof kp !== "string"))
+            ) {
+                return {
+                    event: "error",
+                    data: {
+                        message:
+                            "key_points must be null or an array of strings if provided",
+                    },
+                };
+            }
+            createPayload.key_points = obj.key_points;
+        }
+
+        const color = obj.color;
+        if (typeof color !== "string" || !color.trim()) {
+            return {
+                event: "error",
+                data: { message: "color must be a non-empty string" },
+            };
+        }
+        createPayload.color = color;
+
+        const category = obj.category;
+        if (typeof category !== "string" || !category.trim()) {
+            return {
+                event: "error",
+                data: { message: "category must be a non-empty string" },
+            };
+        }
+        createPayload.category = category;
+
+        await this.skeletalsQueue.add("createSkeletal", createPayload);
+
+        return {
+            event: "queued",
+            data: { action: "createSkeletal", slideId },
+        };
+    }
+
+    @SubscribeMessage("deleteSkeletal")
+    async handleDeleteSkeletal(
+        @MessageBody() payload: unknown,
+    ): Promise<WsResponse<Record<string, unknown>>> {
+        const obj = parseWsPayload(payload);
+        if (!obj) {
+            return {
+                event: "error",
+                data: { message: "Invalid payload format" },
+            };
+        }
+
+        const slideId = pickString(obj, "slideId");
+        const skeletalId = pickString(obj, "skeletalId");
+
+        if (!slideId || !skeletalId) {
+            return {
+                event: "error",
+                data: { message: "slideId and skeletalId are required" },
+            };
+        }
+
+        await this.skeletalsQueue.add("deleteSkeletal", {
+            slideId,
+            skeletalId,
+        });
+
+        return {
+            event: "queued",
+            data: { action: "deleteSkeletal", slideId, skeletalId },
         };
     }
 }
