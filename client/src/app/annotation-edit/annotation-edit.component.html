@@ -1,0 +1,135 @@
+<mat-sidenav-container class="layout">
+  <!-- Right drawer -->
+  <mat-sidenav position="end" mode="side" [(opened)]="sidenavOpen" class="ann-sidenav">
+    <div class="sidenav-header">
+      <h3>Annotations</h3>
+      <div class="spacer"></div>
+      <input type="file" hidden #fileChooser accept="image/*" (change)="onChooseImage($event)">
+      <button mat-icon-button (click)="fileChooser.click()" matTooltip="Load Image"><mat-icon>image</mat-icon></button>
+      <button mat-icon-button (click)="onExport()" matTooltip="Export JSON"><mat-icon>download</mat-icon></button>
+      <button mat-icon-button (click)="onClear()" matTooltip="Clear"><mat-icon>delete_sweep</mat-icon></button>
+      <button mat-icon-button (click)="sidenavOpen = false" matTooltip="Close"><mat-icon>chevron_right</mat-icon></button>
+    </div>
+
+    <div class="side-section">
+      <div class="field">
+        <label>Active Label (for new boxes)</label>
+        <mat-select [value]="activeLabelId()" (valueChange)="activeLabelId.set($event)">
+          @for (l of labels(); track l.id) {
+            <mat-option [value]="l.id">
+              <span class="label-swatch" [style.background]="l.color ?? '#ff8c00'"></span>
+              {{ l.name }}
+            </mat-option>
+          }
+        </mat-select>
+      </div>
+
+      <div class="field">
+        <label>Active Color (for new boxes)</label>
+        <input type="color" class="color-input" [value]="activeColor()" (input)="onActiveColorInput($event)">
+      </div>
+    </div>
+
+    @if (selection().type === 'box' && selection().id !== null) {
+      <h4 class="section">Selected Box</h4>
+      <div class="side-section">
+        <div class="field">
+          <label>Label</label>
+          <mat-select [value]="selectedBoxLabelId()" (valueChange)="onSelectedLabelChange($event)">
+            @for (l of labels(); track l.id) {
+              <mat-option [value]="l.id">
+                <span class="label-swatch" [style.background]="l.color ?? '#ff8c00'"></span>
+                {{ l.name }}
+              </mat-option>
+            }
+          </mat-select>
+        </div>
+        <div class="field">
+          <label>Color</label>
+          <input type="color" class="color-input" [value]="selectedBoxColor()" (input)="onSelectedColorInput($event)">
+        </div>
+      </div>
+    }
+
+    <h4 class="section">Boxes</h4>
+    <div class="list">
+      @if (boxes().length === 0) {
+        <div class="empty">No boxes yet</div>
+      } @else {
+        @for (b of boxes(); track b.id) {
+          <div class="row" [class.active]="isSelected('box', b.id)" (click)="selectEntity('box', b.id)">
+            <span class="sw" [style.background]="b.color"></span>
+            <span class="name">{{ labelName(b.labelId) }} #{{ b.id }}</span>
+            <span class="meta">{{ b.w | number:'1.0-0' }}×{{ b.h | number:'1.0-0' }}</span>
+          </div>
+        }
+      }
+    </div>
+  </mat-sidenav>
+
+  <mat-sidenav-content>
+    <!-- Tool rail -->
+    <div class="tool-rail elevation">
+      <button class="tool-btn" [class.active]="currentTool().kind === 'select'" (click)="selectTool('select')" title="Select (V)">
+        <mat-icon fontIcon="near_me"></mat-icon>
+      </button>
+      <button class="tool-btn" [class.active]="currentTool().kind === 'box'" (click)="selectTool('box')" title="Box (B)">
+        <mat-icon fontIcon="crop_din"></mat-icon>
+      </button>
+      <button class="tool-btn" [class.active]="currentTool().kind === 'skeleton'" (click)="selectTool('skeleton')" title="Skeleton (K)">
+        <mat-icon fontIcon="polyline"></mat-icon>
+      </button>
+      <div class="rail-sep"></div>
+      <button class="tool-btn" [class.active]="currentTool().kind === 'stagePan'" (click)="selectTool('stagePan')" title="Pan canvas (H)">
+        <mat-icon fontIcon="pan_tool_alt"></mat-icon>
+      </button>
+      <button class="tool-btn" (click)="stageZoomBy( 1)" title="Zoom In (+)"><mat-icon fontIcon="zoom_in"></mat-icon></button>
+      <button class="tool-btn" (click)="stageZoomBy(-1)" title="Zoom Out (–)"><mat-icon fontIcon="zoom_out"></mat-icon></button>
+      <div class="rail-fill"></div>
+      <button class="tool-btn small" (click)="sidenavOpen = !sidenavOpen" title="Toggle Sidebar">
+        <mat-icon>{{ sidenavOpen ? 'chevron_right' : 'chevron_left' }}</mat-icon>
+      </button>
+    </div>
+
+    <!-- Stage -->
+    <div class="stage" #stage
+         (wheel)="onStageWheel($event)"
+         (pointerdown)="onStagePointerDown($event)"
+         (pointermove)="onStagePointerMove($event)"
+         (pointerup)="onStagePointerUp($event)"
+         (pointercancel)="onStagePointerUp($event)">
+
+      <!-- Scaled desk -->
+      <div class="desk" #desk
+           [style.transform]="'translate(' + stagePan().x + 'px,' + stagePan().y + 'px) scale(' + stageScale() + ')'">
+        <div #viewport class="canvas-viewport"
+             [style.width.px]="canvasSize().w"
+             [style.height.px]="canvasSize().h">
+          <div class="canvas-wrap"
+               (pointerdown)="onPointerDown($event)"
+               (pointermove)="onPointerMove($event)"
+               (pointerup)="onPointerUp($event)"
+               (pointercancel)="onPointerCancel($event)">
+            <canvas #bgCanvas class="canvas base"></canvas>
+            <canvas #fgCanvas class="canvas overlay"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Unscaled HTML labels (display-only; never clip) -->
+      <div class="label-layer" #labelLayer>
+        @for (lbl of screenLabels(); track lbl.id) {
+          <div class="label-chip"
+               [style.left.px]="lbl.left"
+               [style.top.px]="lbl.top"
+               [style.maxWidth.px]="lbl.maxWidth"
+               [style.borderColor]="lbl.color"
+               [class.active]="isSelected('box', lbl.id)">
+            <span class="sw" [style.background]="lbl.color"></span>
+            <span class="text">{{ lbl.labelName }}</span>
+          </div>
+        }
+      </div>
+    </div>
+  </mat-sidenav-content>
+</mat-sidenav-container>

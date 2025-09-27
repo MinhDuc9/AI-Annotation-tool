@@ -1,0 +1,130 @@
+<!-- <div class="input-area">
+    <div class="file-drop" draggable="false" appFileDrop (fileDrop)="uploadFile($event)">
+    <input
+        type="file"
+        (change)="fileInserted($event)"
+        [multiple]="allowMultipleFiles()"
+        [accept]="allowedTypes()"
+        #fileInput
+    />
+
+    <div class="input-label">
+    <label for="fileInput">{{ label().length > 0 ? label() : 'Drop a file here'}}</label>
+    <span class = "divider-label"><div class="divider"></div> or <div class="divider"></div></span>
+    <button matButton="filled" type="button" (click)="fileInput.click()">Browse</button>
+    </div>
+
+    @switch (incorrectInput()) {
+        @case (IncorrectFileInput.IncorrectExtension){
+            <mat-error>Incorrect file extension</mat-error>
+        }
+        @case (IncorrectFileInput.MultipleFiles){
+            <mat-error>Multiple files are not allowed</mat-error>
+        }
+        @default {
+            <mat-error></mat-error>
+        }
+    }
+    </div>
+
+    @if(uploadedFiles.length > 0) {
+        <div class="file-list">
+            <h3>Uploaded files</h3>
+            @for (file of uploadedFiles; track $index; let i = $index){
+                <div class="file-item">
+                    <div class="file-name">
+                        <span>{{file.name}}</span>
+                        <button matIconButton type="button" (click)="removeFile(i)">
+                            <mat-icon>close</mat-icon>
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+
+ -->
+
+<!-- Wrapper provides consistent padding and max width when embedded -->
+<section class="fi">
+    <mat-card class="fi__card" appearance="outlined">
+        <mat-card-header class="fi__header">
+            <div mat-card-avatar class="fi__avatar">
+                <mat-icon aria-hidden="true" fontIcon="upload"></mat-icon>
+            </div>
+            <mat-card-title class="fi__title">Upload files</mat-card-title>
+            <mat-card-subtitle class="fi__subtitle">
+                {{ allowMultipleFiles() ? 'Multiple files allowed' : 'Single file only' }} ·
+                Allowed: {{ allowedTypes() || 'any' }}
+            </mat-card-subtitle>
+        </mat-card-header>
+
+        <mat-card-content>
+            <div class="fi__drop" draggable="false" appFileDrop (fileDrop)="uploadFile($event)" role="button"
+                tabindex="0" aria-label="Drop files here or browse to upload" (keydown.enter)="fileInput.click()"
+                (keydown.space)="fileInput.click()">
+                <input class="fi__native-input" type="file" (change)="fileInserted($event)"
+                    [multiple]="allowMultipleFiles()" [accept]="allowedTypes()" #fileInput />
+
+                <div class="fi__drop-inner">
+                    <span class="fi__drop-icon-wrap" aria-hidden="true">
+                        <span class="fi__drop-icon-wrap" aria-hidden="true">
+                            <mat-icon class="fi__drop-icon">cloud_upload</mat-icon>
+                        </span>
+                    </span>
+
+                    <div class="fi__drop-text">
+                        <strong>Drop files here</strong>
+                        <span class="fi__or"><span class="fi__divider"></span>or<span class="fi__divider"></span></span>
+                        <button type="button" mat-flat-button color="primary"
+                            (click)="fileInput.click()">Browse</button>
+                    </div>
+
+                    <div class="fi__helper">
+                        {{ (label() && label().length) ? label() : 'Drag and drop files here' }}
+                    </div>
+                </div>
+
+                @switch (incorrectInput()) {
+                @case (IncorrectFileInput.IncorrectExtension) {
+                <mat-error class="fi__error">Incorrect file extension</mat-error>
+                }
+                @case (IncorrectFileInput.MultipleFiles) {
+                <mat-error class="fi__error">Multiple files are not allowed</mat-error>
+                }
+                @default {}
+                }
+            </div>
+
+            @if (uploadedFiles.length > 0) {
+            <div class="fi__list">
+                <div class="fi__list-header">
+                    <h3 class="fi__list-title">Selected file{{ uploadedFiles.length > 1 ? 's' : '' }}</h3>
+                    <span class="fi__list-count">{{ uploadedFiles.length }}</span>
+                </div>
+
+                <ul class="fi__items" role="list">
+                    @for (file of uploadedFiles; track $index; let i = $index) {
+                    <li class="fi__item">
+                        <div class="fi__item-meta">
+                            <mat-icon aria-hidden="true">insert_drive_file</mat-icon>
+                            <div class="fi__item-text">
+                                <span class="fi__name">{{ file.name }}</span>
+                                <span class="fi__detail">{{ file.type || 'Unknown type' }} · {{ file.size | number }}
+                                    bytes</span>
+                            </div>
+                        </div>
+
+                        <button mat-icon-button type="button" aria-label="Remove file" (click)="removeFile(i)">
+                            <mat-icon>close</mat-icon>
+                        </button>
+                    </li>
+                    }
+                </ul>
+            </div>
+            }
+        </mat-card-content>
+    </mat-card>
+</section>
