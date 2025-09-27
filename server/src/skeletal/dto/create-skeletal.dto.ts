@@ -24,4 +24,8 @@ export class CreateSkeletalDto {
     @IsNotEmpty()
     @IsString()
     color: string;
+
+    @IsNotEmpty()
+    @IsString()
+    category: string;
 }

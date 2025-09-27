@@ -29,6 +29,12 @@ export class ProjectController {
         return this.projectService.findAll();
     }
 
+    @Get("all_user_project/:project_id")
+    @Roles("admin", "write", "read")
+    getAllUserProject(@Param("project_id") projectId: string) {
+        return this.projectService.getAllUserProject(projectId);
+    }
+
     @Patch("add_write_user/:user_email/:project_id")
     @Roles("admin")
     addWriteUser(

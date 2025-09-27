@@ -158,6 +158,30 @@ export class ProjectService {
         return this.projectRepository.save(project);
     }
 
+    async getAllUserProject(projectId: string): Promise<
+        {
+            userId: string;
+            userName: string;
+            email: string;
+            role: "admin" | "write" | "read";
+        }[]
+    > {
+        // Ensure the requesting user belongs to the project before listing members
+        await this.ensureUserOwnsProject(projectId);
+
+        const projectRoles = await this.projectUserRoleRepository.find({
+            where: { projectId },
+            relations: ["user"],
+        });
+
+        return projectRoles.map(({ role, user }) => ({
+            role,
+            userId: user.id,
+            userName: user.userName,
+            email: user.email,
+        }));
+    }
+
     async update(
         projectId: string,
         updateProjectDto: UpdateProjectDto,
