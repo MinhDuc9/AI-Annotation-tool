@@ -80,16 +80,13 @@ def analyze_image(image_path: str):
         color_value = species_info["color"] or "#000000"
 
         bbox_list.append({
-            "id": bb_id,
             "bb_id": bb_id,
             "x_pos": float(x1),
             "y_pos": float(y1),
             "x_long": float(bbox_w),
             "y_long": float(bbox_h),
             "color": color_value,
-            "colour": color_value,
             "category": category_value,
-            "species_name": category_value,
         })
 
         # === Pose estimation ===
@@ -118,18 +115,12 @@ def analyze_image(image_path: str):
                     kp_name = KEYPOINT_NAMES.get(k_id, "")
                     kp_map[k_id] = kp_uuid
                     keypoints_dict[kp_uuid] = {
-                        "id": kp_uuid,
                         "key_id": kp_uuid,
                         "x_pos": gx,
                         "y_pos": gy,
-                        "x": gx,
-                        "y": gy,
                         "category": kp_name or "unknown",
-                        "name": kp_name or "unknown",
                         "color": color_value,
-                        "colour": color_value,
                         "key_points": [],
-                        "key_point_to": [],
                     }
 
                 # link edges
@@ -141,20 +132,15 @@ def analyze_image(image_path: str):
                         key_points = entry["key_points"]
                         if dst_id not in key_points:
                             key_points.append(dst_id)
-                        key_point_to = entry["key_point_to"]
-                        if dst_id not in key_point_to:
-                            key_point_to.append(dst_id)
 
         keypoints_list = []
         for entry in keypoints_dict.values():
             if not entry["key_points"]:
-                entry["key_points"] = None
-                entry["key_point_to"] = None
+                entry["key_points"] = []
             keypoints_list.append(entry)
 
         skeletal_list.append({
             "bb_id": bb_id,
-            "bounding_box_id": bb_id,
             "keypoints": keypoints_list,
         })
 

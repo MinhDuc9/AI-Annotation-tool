@@ -48,15 +48,13 @@ for idx, item in enumerate(data["results"]):
         # Group skeletals by their bounding box id for easier lookup
         skeletals_by_box = {}
         for skel in skeletals:
-            box_id = skel.get("bounding_box_id") or skel.get("bb_id")
+            box_id = skel.get("bb_id")
             if not isinstance(box_id, str):
                 continue
-            skeletals_by_box.setdefault(box_id, []).extend(
-                skel.get("keypoints", [])
-            )
+            skeletals_by_box.setdefault(box_id, []).extend(skel.get("keypoints", []))
 
         for bb in bounding_boxes:
-            box_id = bb.get("id") or bb.get("bb_id")
+            box_id = bb.get("bb_id")
             if not isinstance(box_id, str):
                 continue
 
@@ -82,20 +80,20 @@ for idx, item in enumerate(data["results"]):
 
             keypoints = skeletals_by_box.get(box_id, [])
             kp_map = {
-                kp.get("id") or kp.get("key_id"): kp
+                kp.get("key_id"): kp
                 for kp in keypoints
-                if isinstance(kp.get("id") or kp.get("key_id"), str)
+                if isinstance(kp.get("key_id"), str)
             }
 
             for kp in keypoints:
                 try:
-                    px = int(kp.get("x_pos", kp.get("x", 0)))
-                    py = int(kp.get("y_pos", kp.get("y", 0)))
+                    px = int(kp.get("x_pos", 0))
+                    py = int(kp.get("y_pos", 0))
                 except (TypeError, ValueError):
                     continue
                 cv2.circle(image, (px, py), 4, (0, 0, 255), -1)
 
-                connections = kp.get("key_points") or kp.get("key_point_to")
+                connections = kp.get("key_points")
                 if not connections:
                     continue
                 for dst_id in connections:
@@ -105,8 +103,8 @@ for idx, item in enumerate(data["results"]):
                     try:
                         p1 = (px, py)
                         p2 = (
-                            int(dst.get("x_pos", dst.get("x", 0))),
-                            int(dst.get("y_pos", dst.get("y", 0))),
+                            int(dst.get("x_pos", 0)),
+                            int(dst.get("y_pos", 0)),
                         )
                     except (TypeError, ValueError):
                         continue
