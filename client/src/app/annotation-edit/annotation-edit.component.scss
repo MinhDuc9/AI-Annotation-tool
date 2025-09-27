@@ -150,3 +150,44 @@ label { font-size: .85rem; color: var(--ed-on-surface-variant); }
 .label-swatch {
   display: inline-block; width: .85rem; height: .85rem; border-radius: 2px; margin-right: .5rem; vertical-align: middle;
 }
+
+/* comments */
+.comments-list {
+  display: grid;
+  gap: 12px;
+}
+.comment-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--ed-surface);
+  border: 1px solid var(--ed-outline-variant);
+  align-items: start;
+}
+.comment-card img[mat-card-avatar] {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.comment-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.8;
+  margin: 6px 0 8px;
+  .dot { opacity: 0.6; }
+}
+.comment-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.row.gap { display: flex; gap: 8px; align-items: center; }
+

@@ -21,6 +21,31 @@ export interface getSlidesDTO {
   projectId: string;
 }
 
+export interface getCommentDTO{
+  id: string;
+  projectId: string;
+  comments: slideCommentDTO[]
+}
+
+export interface slideCommentDTO{
+  id: string;
+  slideId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string
+}
+
+export interface CommentModel{
+  id: string;
+  slideId: string;
+  userId: string;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
+  isPending?: boolean;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -56,4 +81,10 @@ export class SlideService {
     return this.http.get('http://localhost:8080/slide/image/' + slideId, {headers: header, responseType: 'blob', observe: 'response'});
   }
 
+  getComments(slideId: string) {
+    const token = this.auth.getToken();
+    const header = new HttpHeaders().set("Authorization", "Bearer " + token);
+    return this.http.get<getCommentDTO>('http://localhost:8080/slide/comments/' + slideId, {headers: header});
+  }
 }
+

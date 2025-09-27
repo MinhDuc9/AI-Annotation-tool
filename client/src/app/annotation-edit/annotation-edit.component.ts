@@ -17,6 +17,15 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatSelectModule } from '@angular/material/select';
 import { MatOptionModule } from '@angular/material/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDividerModule } from '@angular/material/divider';
+import { MatInputModule } from '@angular/material/input';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatCardModule } from '@angular/material/card';
+import { MatTabsModule } from '@angular/material/tabs';
+import { CommentModel, slideCommentDTO, SlideService } from '../services/slide.service';
+import { SocketCommentDTO, SocketCommentDeletedDTO, SocketService } from '../services/socket.service';
+import { AuthService } from '../services/Auth.service';
+import { Observable } from 'rxjs';
 
 /* ---------------- Data models (image space) ---------------- */
 export type Id = number;
@@ -71,6 +80,11 @@ interface Tool {
     MatSelectModule,
     MatOptionModule,
     MatTooltipModule,
+    MatTabsModule,
+    MatCardModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatDividerModule,
   ],
   templateUrl: './annotation-edit.component.html',
   styleUrls: ['./annotation-edit.component.scss'],
@@ -740,4 +754,211 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
       clampToImage: (p) => this.clampToImage(p),
     };
   }
+
+  /* ---------- Comments tab state ---------- */
+  private slideSvc = inject(SlideService);
+  private socket = inject(SocketService);
+  private auth = inject(AuthService);
+
+  currentSlideId = signal<string>('');    // user can paste/set it (project WIP)
+  userId = signal<string>((this.auth.getUserId() ?? crypto.randomUUID()).trim());
+
+  comments = signal<CommentModel[]>([]);
+  newComment = signal<string>('');
+  isConnected = signal<boolean>(false);
+
+  private socketSubs: Array<() => void> = [];
+  private pendingOptimistic: Array<{ userId: string; content: string }> = [];
+  private uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  onSlideIdInput(e: Event)    { this.currentSlideId.set((e.target as HTMLInputElement).value.trim()); }
+  onUserIdInput(e: Event)     { this.userId.set((e.target as HTMLInputElement).value.trim()); }
+  onNewCommentInput(e: Event) { this.newComment.set((e.target as HTMLTextAreaElement).value); }
+
+  connectToSlide() {
+    const id = this.currentSlideId().trim();
+    if (!id) { this.snack.open('Enter a Slide ID first', undefined, { duration: 1500 }); return; }
+
+    this.currentSlideId.set(id);
+    this.pendingOptimistic = [];
+    this.comments.set([]);
+
+    // Join room
+    this.socket.joinSlide(id);
+    this.isConnected.set(true);
+
+    // Load existing comments from REST and map to domain model (Date)
+    this.slideSvc.getComments(id).subscribe({
+      next: (dto) => {
+        const mapped = (dto?.comments ?? []).map(this.mapDtoToModel);
+        this.comments.set(mapped.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()));
+      },
+      error: () => this.snack.open('Failed to load comments', undefined, { duration: 1600 }),
+    });
+
+    // Wire live events (dispose any old handlers)
+    this.disposeSocketHandlers();
+    this.socketSubs = [
+      this.observe(this.socket.onCommentCreated(), (c) => this.applyIncomingCreate(c)),
+      this.observe(this.socket.onCommentUpdated(), (c) => this.applyIncomingUpdate(c)),
+      this.observe(this.socket.onCommentDeleted(), (c) => this.applyIncomingDelete(c)),
+      this.observe(this.socket.onError(), (e) => this.snack.open(e.message ?? 'Socket error', undefined, { duration: 1800 })),
+    ];
+  }
+
+  disconnectFromSlide() {
+    this.disposeSocketHandlers();
+    this.socket.disconnect();
+    this.pendingOptimistic = [];
+    this.isConnected.set(false);
+  }
+
+  private disposeSocketHandlers() {
+    // Each observer returns an unsubscribe fn we stored
+    for (const off of this.socketSubs) try { off(); } catch {}
+    this.socketSubs = [];
+  }
+
+  private observe<T>(obs: Observable<T>, next: (v: T) => void): () => void {
+    const sub = obs.subscribe(next);
+    return () => sub.unsubscribe();
+  }
+
+  private mapDtoToModel = (c: slideCommentDTO): CommentModel => ({
+    id: c.id,
+    slideId: c.slideId,
+    userId: c.userId,
+    content: c.content,
+    createdAt: new Date(c.createdAt),
+    updatedAt: new Date(c.updatedAt),
+  });
+
+  private mapSocketToModel(c: SocketCommentDTO): CommentModel {
+    const created = c.createdAt ? new Date(c.createdAt) : new Date();
+    const updated = c.updatedAt ? new Date(c.updatedAt) : created;
+    return {
+      id: c.id,
+      slideId: c.slideId,
+      userId: (c.userId ?? '').trim(),
+      content: c.content,
+      createdAt: Number.isNaN(created.getTime()) ? new Date() : created,
+      updatedAt: Number.isNaN(updated.getTime()) ? created : updated,
+    };
+  }
+
+  private applyIncomingCreate(c: SocketCommentDTO) {
+    if (!this.isForCurrentSlide(c.slideId)) return;
+    const incoming = this.mapSocketToModel(c);
+    let matchedPending = false;
+    this.comments.update(arr => {
+      const idx = arr.findIndex(x => x.isPending && x.userId === incoming.userId && x.content === incoming.content);
+      if (idx !== -1) {
+        matchedPending = true;
+        const copy = arr.slice();
+        copy[idx] = incoming;
+        copy.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+        return copy;
+      }
+      if (arr.some(x => x.id === incoming.id)) {
+        return arr;
+      }
+      const next = arr.slice();
+      next.push(incoming);
+      next.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      return next;
+    });
+    if (matchedPending) {
+      this.removePendingEntry(incoming.userId, incoming.content);
+    }
+  }
+
+  private applyIncomingUpdate(c: SocketCommentDTO) {
+    if (!this.isForCurrentSlide(c.slideId)) return;
+    const incoming = this.mapSocketToModel(c);
+    this.comments.update(arr => {
+      const idx = arr.findIndex(x => x.id === incoming.id);
+      if (idx === -1) return arr;
+      const copy = arr.slice();
+      copy[idx] = { ...copy[idx], content: incoming.content, updatedAt: incoming.updatedAt, isPending: undefined };
+      return copy;
+    });
+  }
+
+
+  private applyIncomingDelete(c: SocketCommentDeletedDTO) {
+    if (!this.isForCurrentSlide(c.slideId)) return;
+    this.comments.update(arr => arr.filter(item => item.id !== c.id));
+  }
+
+  private isForCurrentSlide(slideId?: string | null): boolean {
+    const current = this.currentSlideId();
+    return !!slideId && !!current && slideId === current;
+  }
+
+  private removePendingEntry(userId: string, content: string) {
+    const normalizedUser = userId.trim();
+    const normalizedContent = content.trim();
+    const idx = this.pendingOptimistic.findIndex((item) => item.userId === normalizedUser && item.content === normalizedContent);
+    if (idx !== -1) {
+      this.pendingOptimistic.splice(idx, 1);
+    }
+  }
+
+
+  addComment() {
+    const slideId = this.currentSlideId().trim();
+    if (!slideId) { this.snack.open('Enter a Slide ID first', undefined, { duration: 1500 }); return; }
+    this.currentSlideId.set(slideId);
+
+    const content = this.newComment().trim();
+    if (!content) return;
+
+    const uid = this.userId().trim();
+    if (!uid) { this.snack.open('Provide a user ID', undefined, { duration: 1500 }); return; }
+    if (!this.uuidRegex.test(uid)) { this.snack.open('User ID must be a valid UUID', undefined, { duration: 1800 }); return; }
+    this.userId.set(uid);
+
+    // optimistic append (so UI feels instant)
+    const optimistic: CommentModel = {
+      id: crypto.randomUUID(),
+      slideId,
+      userId: uid,
+      content,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      isPending: true,
+    };
+    this.comments.update(arr => {
+      const next = arr.slice();
+      next.push(optimistic);
+      next.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      return next;
+    });
+    this.pendingOptimistic.push({ userId: uid, content });
+
+    // emit over socket
+    this.socket.createComment(slideId, uid, content);
+    this.newComment.set('');
+  }
+
+  avatarUrl(userId: string): string {
+    // SVG data-URL avatar (initials) so we can use mat-card-image without external calls
+    const initial = (userId?.trim()?.[0] ?? '?').toUpperCase();
+    const bg = this.hashColor(userId);
+    const svg =
+      `<svg xmlns='http://www.w3.org/2000/svg' width='300' height='160'>
+         <rect width='100%' height='100%' fill='${bg}'/>
+         <text x='50%' y='55%' font-family='Inter,Arial' font-size='72' dominant-baseline='middle' text-anchor='middle' fill='white'>${initial}</text>
+       </svg>`;
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  }
+
+  private hashColor(s: string): string {
+    let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    const r = (h >>> 16) & 0xff, g = (h >>> 8) & 0xff, b = h & 0xff;
+    // soften
+    return `rgb(${128 + (r>>1)}, ${128 + (g>>1)}, ${128 + (b>>1)})`;
+  }
 }
+
+
