@@ -10,6 +10,7 @@ import type { Server, Socket } from "socket.io";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
 import { parseWsPayload, pickString } from "src/common/ws.utils";
+import { CreateBoundingBoxDto } from "./dto/create-bounding-box.dto";
 
 @WebSocketGateway({
     cors: {
@@ -166,6 +167,107 @@ export class BoundingBoxGateway {
         return {
             event: "queued",
             data: { action: "updatePosition", slideId, boundingBoxId },
+        };
+    }
+
+    @SubscribeMessage("createBoundingBox")
+    async handleCreateBoundingBox(
+        @MessageBody() payload: unknown,
+    ): Promise<WsResponse<Record<string, unknown>>> {
+        const obj = parseWsPayload(payload);
+        if (!obj) {
+            return {
+                event: "error",
+                data: { message: "Invalid payload format" },
+            };
+        }
+
+        const slideId = pickString(obj, "slideId");
+        if (!slideId) {
+            return {
+                event: "error",
+                data: { message: "slideId is required" },
+            };
+        }
+
+        const numericKeys: Array<keyof CreateBoundingBoxDto> = [
+            "x_pos",
+            "y_pos",
+            "x_long",
+            "y_long",
+        ];
+
+        const createPayload: Record<string, unknown> = { slideId };
+
+        for (const key of numericKeys) {
+            const value = obj[key];
+            if (typeof value !== "number") {
+                return {
+                    event: "error",
+                    data: { message: `${String(key)} must be a number` },
+                };
+            }
+            createPayload[key] = value;
+        }
+
+        const requiredStrings: Array<keyof CreateBoundingBoxDto> = [
+            "color",
+            "category",
+        ];
+
+        for (const key of requiredStrings) {
+            const value = obj[key];
+            if (typeof value !== "string" || !value.trim()) {
+                return {
+                    event: "error",
+                    data: {
+                        message: `${String(key)} must be a non-empty string`,
+                    },
+                };
+            }
+            createPayload[key] = value;
+        }
+
+        await this.boundingBoxesQueue.add("createBoundingBox", createPayload);
+
+        return {
+            event: "queued",
+            data: { action: "createBoundingBox", slideId },
+        };
+    }
+
+    @SubscribeMessage("deleteBoundingBox")
+    async handleDeleteBoundingBox(
+        @MessageBody() payload: unknown,
+    ): Promise<WsResponse<Record<string, unknown>>> {
+        const obj = parseWsPayload(payload);
+        if (!obj) {
+            return {
+                event: "error",
+                data: { message: "Invalid payload format" },
+            };
+        }
+
+        const slideId = pickString(obj, "slideId");
+        const boundingBoxId = pickString(obj, "boundingBoxId");
+
+        if (!slideId || !boundingBoxId) {
+            return {
+                event: "error",
+                data: {
+                    message: "slideId and boundingBoxId are required",
+                },
+            };
+        }
+
+        await this.boundingBoxesQueue.add("deleteBoundingBox", {
+            slideId,
+            boundingBoxId,
+        });
+
+        return {
+            event: "queued",
+            data: { action: "deleteBoundingBox", slideId, boundingBoxId },
         };
     }
 }
