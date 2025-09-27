@@ -109,11 +109,13 @@ def analyze_image(image_path: str):
                     kp_uuid = str(uuid.uuid4())
                     gx = float(x1 + kx)
                     gy = float(by_top + ky)
+                    kp_name = KEYPOINT_NAMES.get(k_id, "")
                     kp_map[k_id] = kp_uuid
                     keypoints_dict[kp_uuid] = {
                         "key_id": kp_uuid,
                         "x": gx,
                         "y": gy,
+                        "name": kp_name,
                         "colour": species_info["color"]
                     }
 

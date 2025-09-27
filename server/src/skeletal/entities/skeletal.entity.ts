@@ -39,4 +39,7 @@ export class Skeletal {
 
     @Column({ type: "varchar" })
     color: string;
+
+    @Column({ type: "varchar" })
+    category: string;
 }

@@ -95,7 +95,7 @@ export class BoundingBoxProcessor extends WorkerHost {
 
     private pickOptionalString(
         payload: Record<string, unknown>,
-        key: keyof Pick<BoundingBox, "color">,
+        key: keyof Pick<BoundingBox, "color" | "category">,
     ): string | undefined {
         const value = payload[key];
         if (value === undefined) {
@@ -158,6 +158,11 @@ export class BoundingBoxProcessor extends WorkerHost {
         const color = this.pickOptionalString(payload, "color");
         if (color !== undefined) {
             updates.color = color;
+        }
+
+        const category = this.pickOptionalString(payload, "category");
+        if (category !== undefined) {
+            updates.category = category;
         }
 
         if (Object.keys(updates).length === 0) {

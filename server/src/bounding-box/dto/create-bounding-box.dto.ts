@@ -20,4 +20,8 @@ export class CreateBoundingBoxDto {
     @IsNotEmpty()
     @IsString()
     color: string;
+
+    @IsNotEmpty()
+    @IsString()
+    category: string;
 }

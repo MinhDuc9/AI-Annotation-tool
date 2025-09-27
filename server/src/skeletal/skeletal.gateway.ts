@@ -142,6 +142,18 @@ export class SkeletalGateway {
             hasUpdate = true;
         }
 
+        if (obj.category !== undefined) {
+            if (typeof obj.category !== "string") {
+                return {
+                    event: "error",
+                    data: { message: "category must be a string if provided" },
+                };
+            }
+
+            updatePayload.category = obj.category;
+            hasUpdate = true;
+        }
+
         if (obj.key_points !== undefined) {
             if (
                 obj.key_points !== null &&

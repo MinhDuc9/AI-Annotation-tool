@@ -56,6 +56,7 @@ export class BoundingBoxService {
             x_long: createBoundingBoxDto.x_long,
             y_long: createBoundingBoxDto.y_long,
             color: createBoundingBoxDto.color,
+            category: createBoundingBoxDto.category,
         });
 
         return this.boundingBoxRepository.save(boundingBox);
@@ -94,6 +95,9 @@ export class BoundingBoxService {
         }
         if (updateBoundingBoxDto.color !== undefined) {
             boundingBox.color = updateBoundingBoxDto.color;
+        }
+        if (updateBoundingBoxDto.category !== undefined) {
+            boundingBox.category = updateBoundingBoxDto.category;
         }
 
         return this.boundingBoxRepository.save(boundingBox);

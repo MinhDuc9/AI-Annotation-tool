@@ -142,6 +142,18 @@ export class BoundingBoxGateway {
             hasUpdate = true;
         }
 
+        if (obj.category !== undefined) {
+            if (typeof obj.category !== "string") {
+                return {
+                    event: "error",
+                    data: { message: "category must be a string if provided" },
+                };
+            }
+
+            updatePayload.category = obj.category;
+            hasUpdate = true;
+        }
+
         if (!hasUpdate) {
             return {
                 event: "error",

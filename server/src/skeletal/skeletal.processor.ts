@@ -95,7 +95,7 @@ export class SkeletalProcessor extends WorkerHost {
 
     private pickOptionalString(
         payload: Record<string, unknown>,
-        key: keyof Pick<Skeletal, "color">,
+        key: keyof Pick<Skeletal, "color" | "category">,
     ): string | undefined {
         const value = payload[key];
         if (value === undefined) {
@@ -184,6 +184,11 @@ export class SkeletalProcessor extends WorkerHost {
         const color = this.pickOptionalString(payload, "color");
         if (color !== undefined) {
             updates.color = color;
+        }
+
+        const category = this.pickOptionalString(payload, "category");
+        if (category !== undefined) {
+            updates.category = category;
         }
 
         const keyPoints = this.pickOptionalKeyPoints(payload);

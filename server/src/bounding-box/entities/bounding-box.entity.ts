@@ -37,4 +37,7 @@ export class BoundingBox {
 
     @Column({ type: "varchar" })
     color: string;
+
+    @Column({ type: "varchar" })
+    category: string;
 }

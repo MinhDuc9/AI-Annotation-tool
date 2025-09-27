@@ -59,6 +59,7 @@ export class SkeletalService {
                     ? createSkeletalDto.key_points
                     : null,
             color: createSkeletalDto.color,
+            category: createSkeletalDto.category,
         });
 
         return await this.skeletalRepository.save(skeletal);
@@ -95,6 +96,9 @@ export class SkeletalService {
         }
         if (updateSkeletalDto.color !== undefined) {
             skeletal.color = updateSkeletalDto.color;
+        }
+        if (updateSkeletalDto.category !== undefined) {
+            skeletal.category = updateSkeletalDto.category;
         }
 
         return await this.skeletalRepository.save(skeletal);
