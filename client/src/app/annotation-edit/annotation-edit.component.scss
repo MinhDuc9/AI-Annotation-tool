@@ -1,6 +1,6 @@
 :host { display: contents; }
 
-/* Material tokens -> readable aliases */
+/* Material tokens → readable aliases */
 :root, :host {
   --ed-surface:               var(--mat-sys-surface);
   --ed-surface-variant:       var(--mat-sys-surface-variant);
@@ -10,20 +10,15 @@
   --ed-on-surface:            var(--mat-sys-on-surface);
   --ed-on-surface-variant:    var(--mat-sys-on-surface-variant);
   --ed-primary:               var(--mat-sys-primary);
-  --ed-on-primary:            var(--mat-sys-on-primary);
 
-  /* Stage background: still dark, just brighter than before */
-  /* Tweak the mix % to taste (higher % = lighter) */
+  /* Stage: dark but not pitch-black */
   --stage-bg: color-mix(in oklab, var(--ed-surface) 60%, #000 40%);
-
-  /* Canvas panel background (a bit brighter than stage to "pop") */
   --canvas-bg: var(--ed-surface-container);
 }
 
-/* App shell fills the viewport */
 .layout { position: fixed; inset: 0; }
 
-/* ---------- Tool rail ---------- */
+/* Tool rail */
 .tool-rail {
   position: absolute; left: 12px; top: 12px; bottom: 12px; width: 44px; z-index: 4;
   display: flex; flex-direction: column; gap: 6px; padding: 6px; border-radius: 12px;
@@ -43,32 +38,28 @@
 .rail-sep { height: 1px; background: var(--ed-outline-variant); margin: 2px; }
 .rail-fill { flex: 1; }
 
-/* ---------- Stage & desk (even gutters, darker but not black) ---------- */
+/* Stage & desk */
 .stage {
   position: relative; width: 100%; height: 100%;
   background: var(--stage-bg);
   color: var(--ed-on-surface);
   overflow: hidden;
 
-  /* Symmetric gutters (adds the missing bottom gap) */
   --desk-pad-top:    24px;
   --desk-pad-bottom: 24px;
-  --desk-pad-left:   64px; /* room for tool rail */
+  --desk-pad-left:   64px;
   --desk-pad-right:  24px;
 
-  padding: var(--desk-pad-top) var(--desk-pad-right)
-           var(--desk-pad-bottom) var(--desk-pad-left);
+  padding: var(--desk-pad-top) var(--desk-pad-right) var(--desk-pad-bottom) var(--desk-pad-left);
   box-sizing: border-box;
 }
-
-/* Desk transforms from top-left; centering handled in TS via stagePan */
 .desk {
   position: absolute; left: 0; top: 0;
   transform-origin: 0 0;
   will-change: transform;
 }
 
-/* ---------- Right drawer (annotation list) ---------- */
+/* Drawer */
 .ann-sidenav {
   width: 320px;
   background: var(--ed-surface-container);
@@ -80,16 +71,18 @@
   padding: .5rem .5rem; border-bottom: 1px solid var(--ed-outline-variant);
 }
 .sidenav-header h3 { font: 600 14px/1.2 system-ui, sans-serif; margin: 0 .25rem 0 .5rem; }
+.sidenav .spacer, .sidenav-header .spacer { flex: 1; }
 
 .side-section { padding: .75rem .75rem 0; }
 .field { display: grid; gap: .35rem; margin-bottom: .75rem; }
 label { font-size: .85rem; color: var(--ed-on-surface-variant); }
+
 .color-input {
   width: 100%; height: 2.25rem; border-radius: .5rem;
   background: var(--ed-surface); border: 1px solid var(--ed-outline-variant);
 }
 
-/* Lists inside drawer */
+/* Lists */
 .section { padding: .5rem .75rem .25rem; color: var(--ed-on-surface-variant); }
 .list    { padding: .25rem .5rem 1rem; display: grid; gap: .25rem; }
 .row {
@@ -103,23 +96,21 @@ label { font-size: .85rem; color: var(--ed-on-surface-variant); }
 .row .meta { color: var(--ed-on-surface-variant); font-size: .85rem; }
 .empty     { color: var(--ed-on-surface-variant); padding: .5rem .75rem; }
 
-/* ---------- Canvas viewport: NO borders, just shadows ---------- */
+/* Canvas viewport: no borders; soft shadows */
 :root, :host {
   --cvp-max-w: min(1400px, 92vw);
   --cvp-max-h: min(900px,  88vh);
 }
-
 .canvas-viewport {
   max-width: var(--cvp-max-w);
   max-height: var(--cvp-max-h);
-  border: none;                 /* no borders so it never looks like part of the image */
+  border: none;
   border-radius: 12px;
-  background: var(--canvas-bg); /* brighter than stage for contrast */
-  /* soft layered outer shadows to float the canvas, no inner outlines */
+  background: var(--canvas-bg);
   box-shadow:
     0 28px 70px rgba(0,0,0,.35),
     0 10px 30px rgba(0,0,0,.24),
-    0 2px 6px rgba(0,0,0,.18);
+    0  2px  6px rgba(0,0,0,.18);
   overflow: hidden;
 }
 
@@ -129,7 +120,33 @@ label { font-size: .85rem; color: var(--ed-on-surface-variant); }
 .base   { position: relative; }
 .overlay{ position: absolute; inset: 0; pointer-events: none; }
 
-/* Swatch used in label select */
+/* HTML label overlay (unscaled) */
+.label-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* display-only; clicks go to canvas */
+  z-index: 3;
+}
+.label-chip {
+  position: absolute;
+  max-width: 280px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in oklab, var(--ed-primary) 35%, rgba(255,255,255,.25));
+  background: color-mix(in oklab, var(--ed-surface) 75%, rgba(0,0,0,.15));
+  color: var(--ed-on-surface);
+  font: 12px/16px system-ui, Inter, Segoe UI, sans-serif;
+  display: inline-flex; align-items: center; gap: 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.25);
+}
+.label-chip.active {
+  outline: 1px solid color-mix(in oklab, var(--ed-primary) 60%, transparent);
+  background: color-mix(in oklab, var(--ed-primary) 18%, var(--canvas-bg));
+}
+.label-chip .sw   { width: .7rem; height: .7rem; border-radius: 2px; flex: 0 0 auto; }
+.label-chip .text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Swatch in select menu */
 .label-swatch {
   display: inline-block; width: .85rem; height: .85rem; border-radius: 2px; margin-right: .5rem; vertical-align: middle;
 }
