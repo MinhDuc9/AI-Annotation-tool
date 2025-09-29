@@ -11,13 +11,30 @@ services:
       HOST: postgres
       REDIS_HOST: redis
       PORT: 8080
+      AI_ANALYZE_ENDPOINT: http://ai-server:8000/analyze
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ai-server:
+        condition: service_started
     ports:
       - "8080:8080"
+
+  ai-server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      target: ai-service
+    command: uvicorn app:app --host 0.0.0.0 --port 8000 --workers 7
+    volumes:
+      - ./server/ai_server/Bird-Detection-main:/app/ai_server/Bird-Detection-main
+      - ./server/uploads:/app/uploads
+    environment:
+      LOCAL_IMAGE_ROOT: /app/uploads
+    ports:
+      - "8000:8000"
 
   client:
     build:
