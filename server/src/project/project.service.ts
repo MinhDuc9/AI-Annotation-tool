@@ -83,7 +83,7 @@ export class ProjectService {
     async ensureUserOwnsProject(projectId: string): Promise<Project> {
         const project = await this.projectRepository.findOne({
             where: { id: projectId },
-            relations: ["userRoles"],
+            relations: ["userRoles", "userRoles.user"],
         });
 
         if (!project) {

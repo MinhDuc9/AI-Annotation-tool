@@ -7,8 +7,14 @@ import {
     WebSocketServer,
     WsResponse,
 } from "@nestjs/websockets";
+import { ContextIdFactory, ModuleRef } from "@nestjs/core";
+import { InjectRepository } from "@nestjs/typeorm";
+import type { Request } from "express";
 import type { Server, Socket } from "socket.io";
+import { Repository } from "typeorm";
 import { parseWsPayload, pickString } from "src/common/ws.utils";
+import { ProjectService } from "src/project/project.service";
+import { Slide } from "./entities/slide.entity";
 
 @WebSocketGateway({
     cors: {
@@ -26,6 +32,12 @@ export class SlideGateway implements OnGatewayDisconnect {
 
     // Track slides joined by each socket to simplify cleanup on disconnect
     private readonly socketSlides = new Map<string, Set<string>>();
+
+    constructor(
+        @InjectRepository(Slide)
+        private readonly slideRepository: Repository<Slide>,
+        private readonly moduleRef: ModuleRef,
+    ) {}
 
     @SubscribeMessage("joinSlide")
     async handleJoinSlide(
@@ -56,7 +68,30 @@ export class SlideGateway implements OnGatewayDisconnect {
             };
         }
 
-        const userName = pickString(obj, "userName") || undefined;
+        const slide = await this.slideRepository.findOne({
+            where: { id: slideId },
+        });
+
+        if (!slide) {
+            return {
+                event: "error",
+                data: { message: "Slide not found" },
+            };
+        }
+
+        let userName: string;
+        try {
+            userName = await this.resolveMemberName(slide.projectId, userId);
+        } catch (error) {
+            const message =
+                error instanceof Error && error.message
+                    ? error.message
+                    : "User is not a member of this project";
+            return {
+                event: "error",
+                data: { message },
+            };
+        }
 
         await client.join(`slide:${slideId}`);
 
@@ -193,6 +228,34 @@ export class SlideGateway implements OnGatewayDisconnect {
         return this.toPublicParticipant(participant);
     }
 
+    private async resolveMemberName(
+        projectId: string,
+        userId: string,
+    ): Promise<string> {
+        const contextId = ContextIdFactory.create();
+        // Forge a request scope carrying the candidate user id so we can reuse
+        // ensureUserOwnsProject for membership validation without exposing userId to clients.
+        const fakeRequest = { user: { id: userId } } as unknown as Request;
+        this.moduleRef.registerRequestByContextId(fakeRequest, contextId);
+
+        const projectService = await this.moduleRef.resolve(
+            ProjectService,
+            contextId,
+            { strict: false },
+        );
+
+        const project = await projectService.ensureUserOwnsProject(projectId);
+        const membership = project.userRoles.find(
+            (role) => role.userId === userId,
+        );
+
+        if (!membership || !membership.user) {
+            throw new Error("User is not a member of this project");
+        }
+
+        return membership.user.userName ?? "";
+    }
+
     private toParticipantArray(
         participants: Map<string, SlideParticipant>,
     ): SlideParticipantPublic[] {
@@ -206,7 +269,6 @@ export class SlideGateway implements OnGatewayDisconnect {
     ): SlideParticipantPublic {
         return {
             socketId: participant.socketId,
-            userId: participant.userId,
             userName: participant.userName,
         };
     }
@@ -215,10 +277,7 @@ export class SlideGateway implements OnGatewayDisconnect {
 interface SlideParticipant {
     socketId: string;
     userId: string;
-    userName?: string;
+    userName: string;
 }
 
-type SlideParticipantPublic = Pick<
-    SlideParticipant,
-    "socketId" | "userId" | "userName"
->;
+type SlideParticipantPublic = Pick<SlideParticipant, "socketId" | "userName">;
