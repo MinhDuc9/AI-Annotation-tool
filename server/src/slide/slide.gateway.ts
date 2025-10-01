@@ -111,7 +111,7 @@ export class SlideGateway implements OnGatewayDisconnect {
 
         client.broadcast
             .to(`slide:${slideId}`)
-            .emit("userJoined", { slideId, user: participantSnapshot });
+            .emit("joined", { slideId, user: participantSnapshot });
 
         return {
             event: "joined",
@@ -148,11 +148,7 @@ export class SlideGateway implements OnGatewayDisconnect {
 
         await client.leave(`slide:${slideId}`);
 
-        if (removed) {
-            this.server
-                .to(`slide:${slideId}`)
-                .emit("userLeft", { slideId, user: removed });
-        }
+        this.emitUserLeft(slideId, removed, client);
 
         return {
             event: "left",
@@ -168,11 +164,7 @@ export class SlideGateway implements OnGatewayDisconnect {
 
         for (const slideId of slideIds) {
             const removed = this.removeParticipant(slideId, client.id);
-            if (removed) {
-                this.server
-                    .to(`slide:${slideId}`)
-                    .emit("userLeft", { slideId, user: removed });
-            }
+            this.emitUserLeft(slideId, removed);
         }
 
         this.socketSlides.delete(client.id);
@@ -271,6 +263,26 @@ export class SlideGateway implements OnGatewayDisconnect {
             socketId: participant.socketId,
             userName: participant.userName,
         };
+    }
+
+    private emitUserLeft(
+        slideId: string,
+        participant: SlideParticipantPublic | null,
+        origin?: Socket,
+    ): void {
+        if (!participant) {
+            return;
+        }
+
+        const room = `slide:${slideId}`;
+        if (origin) {
+            origin.broadcast
+                .to(room)
+                .emit("left", { slideId, user: participant });
+            return;
+        }
+
+        this.server.to(room).emit("left", { slideId, user: participant });
     }
 }
 
