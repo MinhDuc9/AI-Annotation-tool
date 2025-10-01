@@ -1,3 +1,9 @@
+<!-- top of file -->
+<app-annotation-topbar
+  (undo)="onTopbarUndo()"
+  (redo)="onTopbarRedo()">
+</app-annotation-topbar>
+
 <mat-sidenav-container class="layout">
   <!-- Right drawer -->
   <mat-sidenav position="end" mode="side" [(opened)]="sidenavOpen" class="ann-sidenav">

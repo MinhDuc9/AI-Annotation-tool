@@ -26,6 +26,7 @@ import { CommentModel, slideCommentDTO, SlideService } from '../services/slide.s
 import { SocketCommentDTO, SocketCommentDeletedDTO, SocketService } from '../services/socket.service';
 import { AuthService } from '../services/Auth.service';
 import { Observable } from 'rxjs';
+import { AnnotationTopbarComponent } from '../annotation-topbar/annotation-topbar.component';
 
 /* ---------------- Data models (image space) ---------------- */
 export type Id = number;
@@ -98,6 +99,7 @@ interface Tool {
     MatFormFieldModule,
     MatInputModule,
     MatDividerModule,
+    AnnotationTopbarComponent
   ],
   templateUrl: './annotation-edit.component.html',
   styleUrls: ['./annotation-edit.component.scss'],
@@ -105,6 +107,14 @@ interface Tool {
 export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   private snack = inject(MatSnackBar);
   private injector = inject(Injector);
+
+  onTopbarUndo() {
+    // forward to your annotation history or use service:
+    // this.annotationHistoryService.undo();
+  }
+  onTopbarRedo() {
+    // this.annotationHistoryService.redo();
+  }
 
   /* ---------- View refs ---------- */
   @ViewChild('bgCanvas',   { static: true }) bgCanvasRef!: ElementRef<HTMLCanvasElement>;
