@@ -55,6 +55,40 @@
         </div>
       }
 
+      <!-- SELECTED SKELETON (color only) -->
+@if (selection().type === 'skeleton' && selection().id !== null) {
+  <h4 class="section">Selected Skeleton</h4>
+  <div class="side-section">
+    <div class="field">
+      <label>Color (applies to all bones)</label>
+      <input type="color" class="color-input" [value]="skeletonColor()" (input)="onSkeletonColorInput($event)">
+    </div>
+  </div>
+}
+
+<!-- SELECTED POINT (skeleton color + per-point label) -->
+@if (selection().type === 'point' && selection().id !== null) {
+  <h4 class="section">Selected Point</h4>
+  <div class="side-section">
+    <div class="field">
+      <label>Skeleton Color</label>
+      <input type="color" class="color-input" [value]="skeletonColor()" (input)="onSkeletonColorInput($event)">
+    </div>
+
+    <div class="field">
+      <label>Point Label</label>
+      <mat-select [value]="pointLabelId()" (valueChange)="onPointLabelChange($event)">
+        @for (l of labels(); track l.id) {
+          <mat-option [value]="l.id">
+            <span class="label-swatch" [style.background]="l.color ?? '#888'"></span>
+            {{ l.name }}
+          </mat-option>
+        }
+      </mat-select>
+    </div>
+  </div>
+}
+
       <h4 class="section">Boxes</h4>
       <div class="list">
         @if (boxes().length === 0) {
@@ -112,7 +146,8 @@
       <div class="comments-list">
         @if (comments().length === 0) {
           <div class="empty">No comments yet</div>
-        } @else {          @for (c of comments(); track c.id) {
+        } @else {
+          @for (c of comments(); track c.id) {
             <div class="comment-card mat-elevation-z2">
               <img mat-card-avatar [src]="avatarUrl(c.userId)" alt="{{ c.userId }} avatar">
               <div class="comment-content">

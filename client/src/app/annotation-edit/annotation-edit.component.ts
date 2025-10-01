@@ -40,21 +40,34 @@ export interface BoxAnn {
 }
 
 export type Vis = 0 | 1 | 2;
-export interface Keypoint { id: string; x: number; y: number; v: Vis; }
+
+export interface Keypoint {
+  id: string;           // unique within its skeleton
+  x: number; y: number; // image px
+  v: Vis;
+  labelId: string;      // per-point label (independent from skeleton)
+}
+
 export interface SkeletonAnn {
   id: Id;
   points: Record<string, Keypoint>;
-  edges: [string, string][];
-  labelId: string;
-  color: string;
+  edges: [string, string][];  // undirected
+  labelId: string;            // optional “type”, not used for color
+  color: string;              // universal color for all bones in this skeleton
 }
 
 /* ---------------- Tools contract ---------------- */
 type ToolKind = 'select' | 'box' | 'skeleton' | 'stagePan';
+type Selection =
+  | { type: null; id: null }
+  | { type: 'box'; id: Id }
+  | { type: 'skeleton'; id: Id }
+  | { type: 'point'; id: Id; pid: string }; // skeleton id + point id
+
 interface ToolCtx {
   boxes: BoxAnn[];
   skeletons: SkeletonAnn[];
-  selection: { type: 'box' | 'skeleton' | null; id: Id | null; };
+  selection: Selection;
   activeLabelId: string;
   activeColor: string;
   requestPaint(): void;
@@ -176,10 +189,18 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   private onKeyDown = (e: KeyboardEvent) => {
     if (e.code === 'Space') { this.spaceHeld = true; e.preventDefault(); return; }
     const k = e.key.toLowerCase();
+
+    // hotkeys
     if (k === 'h') this.selectTool('stagePan');
     if (k === 'v') this.selectTool('select');
     if (k === 'b') this.selectTool('box');
     if (k === 'k') this.selectTool('skeleton');
+
+    // deletion
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      this.deleteCurrentSelection();
+      e.preventDefault();
+    }
   };
   private onKeyUp   = (e: KeyboardEvent) => { if (e.code === 'Space') this.spaceHeld = false; };
 
@@ -215,13 +236,15 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   activeColor   = signal<string>('#ff8c00');  // new boxes
 
   boxes = signal<BoxAnn[]>([]);
+
   skeletons = signal<SkeletonAnn[]>([]);
   private idSeq = 1;
+  private pointSeq = 1;
 
-  selection = signal<{ type: 'box' | 'skeleton' | null; id: Id | null }>({ type: null, id: null });
+  selection = signal<Selection>({ type: null, id: null });
   sidenavOpen = true;
 
-  /* ---------- Screen-space label chips ---------- */
+  /* ---------- Screen-space label chips for BOXES only ---------- */
   screenLabels = signal<Array<{
     id: Id; labelId: string; labelName: string; color: string;
     left: number; top: number; maxWidth: number;
@@ -229,8 +252,8 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
   /* ---------- Tools ---------- */
   private boxTool: Tool        = this.makeBoxTool();
-  private selectToolObj: Tool  = this.makeSelectTool();
-  private skeletonTool: Tool   = this.makeSkeletonTool();
+  private selectToolObj: Tool  = this.makeSelectTool();     // now supports skeleton + point select/move/delete
+  private skeletonTool: Tool   = this.makeSkeletonTool();   // custom behavior per spec
   private stagePanTool: Tool   = this.makeStagePanTool();
 
   currentTool = signal<Tool>(this.selectToolObj);
@@ -329,12 +352,34 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     this.activeColor.set(value);
   }
 
-  /* ---------- Selected box sidebar bindings ---------- */
+  /* ---------- Selected helpers ---------- */
   selectedBox(): BoxAnn | null {
     const s = this.selection();
     if (s.type !== 'box' || s.id == null) return null;
     return this.boxes().find(b => b.id === s.id) ?? null;
   }
+
+  selectedSkeleton(): SkeletonAnn | null {
+    const s = this.selection();
+    if (s.type === 'skeleton' && s.id != null) {
+      return this.skeletons().find(sk => sk.id === s.id) ?? null;
+    }
+    if (s.type === 'point' && s.id != null) {
+      return this.skeletons().find(sk => sk.id === s.id) ?? null;
+    }
+    return null;
+  }
+
+  selectedPoint(): { sk: SkeletonAnn; kp: Keypoint } | null {
+    const s = this.selection();
+    if (s.type !== 'point' || s.id == null) return null;
+    const sk = this.skeletons().find(x => x.id === s.id);
+    if (!sk) return null;
+    const kp = sk.points[s.pid];
+    return kp ? { sk, kp } : null;
+  }
+
+  /* ---------- Sidebar bindings for BOX ---------- */
   selectedBoxLabelId() { return this.selectedBox()?.labelId ?? this.activeLabelId(); }
   selectedBoxColor()   { return this.selectedBox()?.color   ?? this.activeColor(); }
 
@@ -352,11 +397,50 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     this.requestPaint(); this.updateScreenLabels();
   }
 
+  /* ---------- Sidebar bindings for SKELETON/POINT ---------- */
+  skeletonColor(): string {
+    return this.selectedSkeleton()?.color ?? '#00e676';
+  }
+  onSkeletonColorInput(e: Event) {
+    const value = (e.target as HTMLInputElement)?.value;
+    const s = this.selection();
+    if (!value) return;
+    if (s.type === 'skeleton' && s.id != null) {
+      this.skeletons.update(arr => arr.map(sk => sk.id === s.id ? { ...sk, color: value } : sk));
+      this.requestPaint();
+    } else if (s.type === 'point' && s.id != null) {
+      this.skeletons.update(arr => arr.map(sk => sk.id === s.id ? { ...sk, color: value } : sk));
+      this.requestPaint();
+    }
+  }
+
+  pointLabelId(): string {
+    const sp = this.selectedPoint();
+    return sp?.kp.labelId ?? this.activeLabelId();
+  }
+  onPointLabelChange(newId: string) {
+    const s = this.selection();
+    if (s.type !== 'point') return;
+    this.skeletons.update(arr => arr.map(sk => {
+      if (sk.id !== s.id) return sk;
+      const kp = sk.points[s.pid];
+      if (!kp) return sk;
+      return { ...sk, points: { ...sk.points, [s.pid]: { ...kp, labelId: newId } } };
+    }));
+    this.requestPaint();
+  }
+
   isSelected(type: 'box' | 'skeleton', id: Id) {
-    const s = this.selection(); return s.type === type && s.id === id;
+    const s = this.selection();
+    if (type === 'box') return s.type === 'box' && s.id === id;
+    if (type === 'skeleton') return (s.type === 'skeleton' || s.type === 'point') && s.id === id;
+    return false;
   }
   selectEntity(type: 'box' | 'skeleton', id: Id) {
-    this.selection.set({ type, id }); this.currentTool.set(this.selectToolObj); this.requestPaint();
+    if (type === 'box') this.selection.set({ type: 'box', id });
+    else this.selection.set({ type: 'skeleton', id });
+    this.currentTool.set(this.selectToolObj);
+    this.requestPaint();
   }
 
   /* ---------- Canvas pointer handlers ---------- */
@@ -481,22 +565,65 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     const lw = Math.max(1, Math.round(cssStroke * dpr / Math.max(0.5, s)));
     const handleR = Math.max(3, Math.round(cssHandle * dpr / Math.max(0.5, s)));
 
+    // boxes
     for (const b of this.boxes()) {
       g.lineWidth = lw;
       g.strokeStyle = b.color;
       g.strokeRect(b.x * sx, b.y * sy, b.w * sx, b.h * sy);
     }
-
-    // Draw resize handles for selected box
-    const sel = this.selectedBox();
-    if (sel) {
-      const corners = this.getBoxCornerCanvasPoints(sel, sx, sy);
+    // selected box handles
+    const selBox = this.selectedBox();
+    if (selBox) {
+      const corners = this.getBoxCornerCanvasPoints(selBox, sx, sy);
       g.fillStyle = '#fff';
-      g.strokeStyle = sel.color;
+      g.strokeStyle = selBox.color;
       for (const c of corners) {
         g.beginPath(); g.arc(c.x, c.y, handleR, 0, Math.PI * 2); g.fill();
         g.stroke();
       }
+    }
+
+    // skeletons: draw bones (lines) then points (circles)
+    for (const sk of this.skeletons()) {
+      g.lineWidth = lw;
+      g.strokeStyle = sk.color;
+
+      // bones
+      for (const [a, b] of sk.edges) {
+        const pa = sk.points[a], pb = sk.points[b];
+        if (!pa || !pb) continue;
+        g.beginPath();
+        g.moveTo(pa.x * sx, pa.y * sy);
+        g.lineTo(pb.x * sx, pb.y * sy);
+        g.stroke();
+      }
+
+      // points
+      for (const kp of Object.values(sk.points)) {
+        // point outline in skeleton color; white fill for contrast
+        g.beginPath();
+        g.fillStyle = '#ffffff';
+        g.strokeStyle = sk.color;
+        g.arc(kp.x * sx, kp.y * sy, handleR, 0, Math.PI * 2);
+        g.fill();
+        g.stroke();
+      }
+    }
+
+    // highlight for selected point
+    const sp = this.selectedPoint();
+    if (sp) {
+      g.beginPath();
+      g.strokeStyle = '#fff';
+      g.lineWidth = Math.max(2, lw + 1);
+      g.arc(sp.kp.x * sx, sp.kp.y * sy, handleR + 3, 0, Math.PI * 2);
+      g.stroke();
+
+      g.beginPath();
+      g.strokeStyle = sp.sk.color;
+      g.lineWidth = Math.max(2, lw + 1);
+      g.arc(sp.kp.x * sx, sp.kp.y * sy, handleR + 6, 0, Math.PI * 2);
+      g.stroke();
     }
 
     this.currentTool().drawOverlay?.(g, this.toolCtx());
@@ -531,6 +658,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   }
 
   private updateScreenLabels() {
+    // only for BOX labels (unchanged)
     const stageEl = this.stageRef?.nativeElement ?? this.viewportRef.nativeElement.closest('.stage') as HTMLElement;
     if (!stageEl || !this.imgLoaded()) { this.screenLabels.set([]); return; }
 
@@ -597,6 +725,64 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     return null;
   }
 
+  /* ---------- Skeleton math & hit-tests ---------- */
+  private hitRadiusPx = 10;
+
+  private forEachSkeletonPoint<T>(fn: (sk: SkeletonAnn, pid: string, kp: Keypoint) => T | void): void {
+    for (const sk of this.skeletons()) {
+      for (const [pid, kp] of Object.entries(sk.points)) {
+        const r = fn(sk, pid, kp);
+        if (r !== undefined) return;
+      }
+    }
+  }
+
+  private hitTestPoint(clientX: number, clientY: number): { skId: Id; pid: string } | null {
+    const rect = this.viewportRect();
+    const sx = rect.width  / Math.max(1, this.imageWidth());
+    const sy = rect.height / Math.max(1, this.imageHeight());
+    const cx = clientX - rect.left, cy = clientY - rect.top;
+
+    let found: { skId: Id; pid: string } | null = null;
+    this.forEachSkeletonPoint((sk, pid, kp) => {
+      const px = kp.x * sx, py = kp.y * sy;
+      const dx = cx - px, dy = cy - py;
+      if (dx*dx + dy*dy <= this.hitRadiusPx*this.hitRadiusPx) {
+        found = { skId: sk.id, pid };
+      }
+    });
+    return found;
+  }
+
+  private segmentHit(clientX: number, clientY: number, ax: number, ay: number, bx: number, by: number, tol = 6): boolean {
+    // distance from point to segment in screen px
+    const px = clientX, py = clientY;
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx*dx + dy*dy;
+    if (len2 === 0) return Math.hypot(px - ax, py - ay) <= tol;
+    let t = ((px - ax)*dx + (py - ay)*dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const mx = ax + t*dx, my = ay + t*dy;
+    return Math.hypot(px - mx, py - my) <= tol;
+  }
+
+  private hitTestBone(clientX: number, clientY: number): { skId: Id } | null {
+    const rect = this.viewportRect();
+    const sx = rect.width  / Math.max(1, this.imageWidth());
+    const sy = rect.height / Math.max(1, this.imageHeight());
+    const cx = clientX - rect.left, cy = clientY - rect.top;
+
+    for (const sk of this.skeletons()) {
+      for (const [a, b] of sk.edges) {
+        const pa = sk.points[a], pb = sk.points[b];
+        if (!pa || !pb) continue;
+        const ax = pa.x * sx, ay = pa.y * sy, bx = pb.x * sx, by = pb.y * sy;
+        if (this.segmentHit(cx, cy, ax, ay, bx, by, 6)) return { skId: sk.id };
+      }
+    }
+    return null;
+  }
+
   /* ---------- Tools ---------- */
   private makeStagePanTool(): Tool {
     return {
@@ -642,11 +828,21 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     };
   }
 
+  /** Select tool with skeleton support:
+   * - Click bone -> select skeleton (Skeleton Select)
+   * - Click point -> select point (Point Select)
+   * - Drag skeleton -> moves all points
+   * - Drag point -> moves only that point (bones update automatically)
+   */
   private makeSelectTool(): Tool {
     type Corner = 'nw'|'ne'|'sw'|'se';
-    let draggingId: Id | null = null;
+    let draggingBoxId: Id | null = null;
     let resizingId: Id | null = null;
     let corner: Corner | null = null;
+
+    let draggingPoint: { skId: Id; pid: string } | null = null;
+    let draggingSkeletonId: Id | null = null;
+
     let lastImg = { x: 0, y: 0 };
 
     return {
@@ -655,6 +851,27 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         const pImg = ctx.screenToImage(e.clientX, e.clientY);
         const boxes = ctx.boxes;
 
+        // Skeleton: test points first (Point Select)
+        const ptHit = this.hitTestPoint(e.clientX, e.clientY);
+        if (ptHit) {
+          this.selection.set({ type: 'point', id: ptHit.skId, pid: ptHit.pid });
+          draggingPoint = ptHit;
+          lastImg = pImg;
+          ctx.requestPaint();
+          return;
+        }
+
+        // Skeleton: test bones (Skeleton Select)
+        const boneHit = this.hitTestBone(e.clientX, e.clientY);
+        if (boneHit) {
+          this.selection.set({ type: 'skeleton', id: boneHit.skId });
+          draggingSkeletonId = boneHit.skId;
+          lastImg = pImg;
+          ctx.requestPaint();
+          return;
+        }
+
+        // ----- Boxes (keep previous behavior) -----
         // Corner handles (resize takes priority)
         const hitCorner = [...boxes].reverse().map(b => ({ b, c: this.hitTestCorner(b, e.clientX, e.clientY) }))
           .find(h => !!h.c);
@@ -676,7 +893,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         // Move only if clicked INSIDE the currently selected box
         const sel = this.selectedBox();
         if (sel && pImg.x>=sel.x && pImg.x<=sel.x+sel.w && pImg.y>=sel.y && pImg.y<=sel.y+sel.h) {
-          draggingId = sel.id;
+          draggingBoxId = sel.id;
           lastImg = pImg;
           ctx.requestPaint(); return;
         }
@@ -685,14 +902,53 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         this.selection.set({ type: null, id: null });
         ctx.requestPaint();
       },
+
       onMove: (e, ctx) => {
-        if (draggingId != null) {
-          const cur = ctx.screenToImage(e.clientX, e.clientY);
+        const cur = ctx.screenToImage(e.clientX, e.clientY);
+
+        // Move point
+        if (draggingPoint) {
+          const dx = cur.x - lastImg.x, dy = cur.y - lastImg.y;
+          lastImg = cur;
+
+          this.skeletons.update(arr => arr.map(sk => {
+            if (sk.id !== draggingPoint!.skId) return sk;
+            const kp = sk.points[draggingPoint!.pid];
+            if (!kp) return sk;
+            let nx = kp.x + dx, ny = kp.y + dy;
+            const clamped = this.clampToImage({ x: nx, y: ny });
+            nx = clamped.x; ny = clamped.y;
+            return { ...sk, points: { ...sk.points, [draggingPoint!.pid]: { ...kp, x: nx, y: ny } } };
+          }));
+          ctx.requestPaint();
+          return;
+        }
+
+        // Move skeleton (all points)
+        if (draggingSkeletonId != null) {
+          const dx = cur.x - lastImg.x, dy = cur.y - lastImg.y;
+          lastImg = cur;
+
+          this.skeletons.update(arr => arr.map(sk => {
+            if (sk.id !== draggingSkeletonId) return sk;
+            const moved: Record<string, Keypoint> = {};
+            for (const [pid, kp] of Object.entries(sk.points)) {
+              const clamped = this.clampToImage({ x: kp.x + dx, y: kp.y + dy });
+              moved[pid] = { ...kp, x: clamped.x, y: clamped.y };
+            }
+            return { ...sk, points: moved };
+          }));
+          ctx.requestPaint();
+          return;
+        }
+
+        // ----- Boxes -----
+        if (draggingBoxId != null) {
           const dx = cur.x - lastImg.x, dy = cur.y - lastImg.y;
           lastImg = cur;
 
           this.boxes.update(list => list.map(b => {
-            if (b.id !== draggingId) return b;
+            if (b.id !== draggingBoxId) return b;
             let x = b.x + dx, y = b.y + dy;
             x = Math.max(0, Math.min(x, this.imageWidth()  - b.w));
             y = Math.max(0, Math.min(y, this.imageHeight() - b.h));
@@ -703,16 +959,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         }
 
         if (resizingId != null && corner) {
-          const cur = ctx.clampToImage(ctx.screenToImage(e.clientX, e.clientY));
+          const curClamp = ctx.clampToImage(cur);
           this.boxes.update(list => list.map(b => {
             if (b.id !== resizingId) return b;
             let { x, y, w, h } = b;
             const minW = 4, minH = 4;
 
-            if (corner === 'nw') { const nx = Math.min(x + w - minW, cur.x); const ny = Math.min(y + h - minH, cur.y); w = (x + w) - nx; h = (y + h) - ny; x = nx; y = ny; }
-            if (corner === 'ne') { const nx = Math.max(x + minW, cur.x); const ny = Math.min(y + h - minH, cur.y); w = nx - x; y = ny; h = (y + h) - ny; }
-            if (corner === 'sw') { const nx = Math.min(x + w - minW, cur.x); const ny = Math.max(y + minH, cur.y); w = (x + w) - nx; x = nx; h = ny - y; }
-            if (corner === 'se') { const nx = Math.max(x + minW, cur.x); const ny = Math.max(y + minH, cur.y); w = nx - x; h = ny - y; }
+            if (corner === 'nw') { const nx = Math.min(x + w - minW, curClamp.x); const ny = Math.min(y + h - minH, curClamp.y); w = (x + w) - nx; h = (y + h) - ny; x = nx; y = ny; }
+            if (corner === 'ne') { const nx = Math.max(x + minW, curClamp.x); const ny = Math.min(y + h - minH, curClamp.y); w = nx - x; y = ny; h = (y + h) - ny; }
+            if (corner === 'sw') { const nx = Math.min(x + w - minW, curClamp.x); const ny = Math.max(y + minH, curClamp.y); w = (x + w) - nx; x = nx; h = ny - y; }
+            if (corner === 'se') { const nx = Math.max(x + minW, curClamp.x); const ny = Math.max(y + minH, curClamp.y); w = nx - x; h = ny - y; }
 
             // Clamp to image
             x = Math.max(0, Math.min(x, this.imageWidth()  - w));
@@ -723,21 +979,163 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
           ctx.requestPaint(); this.updateScreenLabels();
         }
       },
+
       onUp: (_e, ctx) => {
-        draggingId = null; resizingId = null; corner = null;
+        draggingPoint = null;
+        draggingSkeletonId = null;
+        draggingBoxId = null; resizingId = null; corner = null;
         ctx.requestPaint(); this.updateScreenLabels();
       },
+
       drawOverlay: () => {}
     };
   }
 
+  /** Skeleton tool behavior (per spec):
+   * - Click empty space: create a new skeleton with a single point, select the point.
+   *   If Ctrl held, stay in skeleton tool for chaining; else switch to select tool.
+   * - If a point is already selected in skeleton tool:
+   *   - Click empty: add new point to same skeleton and connect to previous point.
+   *   - Click existing point:
+   *       - If same skeleton: connect if not already connected.
+   *       - If different skeletons: connect and MERGE into selected point’s skeleton color.
+   *   Ctrl keeps chaining with the new point; otherwise switch to select tool.
+   * - Clicking an existing point (without prior selection): select that point (visual feedback).
+   */
   private makeSkeletonTool(): Tool {
+    let localSelecting = false; // track whether we keep chaining
+
+    const addSkeletonWithPoint = (p: {x:number;y:number}): { sk: SkeletonAnn; pid: string } => {
+      const id = this.idSeq++;
+      const pid = 'p' + (this.pointSeq++);
+      const sk: SkeletonAnn = {
+        id,
+        points: { [pid]: { id: pid, x: p.x, y: p.y, v: 2, labelId: this.activeLabelId() } },
+        edges: [] as [string, string][],
+        labelId: this.activeLabelId(),
+        color: '#00e676', // default; user can change in sidebar
+      };
+      this.skeletons.update(arr => [...arr, sk]);
+      return { sk, pid };
+    };
+
+    const addPointToSkeleton = (sk: SkeletonAnn, p: {x:number;y:number}): { pid: string } => {
+      const pid = 'p' + (this.pointSeq++);
+      const next: SkeletonAnn = {
+        ...sk,
+        points: { ...sk.points, [pid]: { id: pid, x: p.x, y: p.y, v: 2, labelId: this.activeLabelId() } }
+      };
+      this.skeletons.update(arr => arr.map(s => s.id === sk.id ? next : s));
+      return { pid };
+    };
+
+    const ensureEdge = (sk: SkeletonAnn, a: string, b: string) => {
+      const exists = sk.edges.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+  if (exists) return;
+
+  // force tuple type for the appended value
+  const next: SkeletonAnn = {
+    ...sk,
+    edges: [...sk.edges, [a, b] as [string, string]],
+  };
+  this.skeletons.update(arr => arr.map(s => (s.id === sk.id ? next : s)));
+    };
+
+    const mergeSkeletons = (keepId: Id, dropId: Id) => {
+      let keep = this.skeletons().find(s => s.id === keepId)!;
+      let drop = this.skeletons().find(s => s.id === dropId)!;
+      // move points
+      const movedPts: Record<string, Keypoint> = { ...keep.points };
+      for (const [pid, kp] of Object.entries(drop.points)) {
+        const npid = movedPts[pid] ? ('m' + pid) : pid;
+        movedPts[npid] = { ...kp, id: npid };
+      }
+      // move edges (remap pids if we ever renamed)
+      const movedEdges: [string, string][] = [...keep.edges];
+  for (const [a, b] of drop.edges) {
+    // if you remap pids, do that first
+    const aa = movedPts[a] ? a : ('m' + a in movedPts ? ('m' + a) : a);
+    const bb = movedPts[b] ? b : ('m' + b in movedPts ? ('m' + b) : b);
+    if (!movedEdges.some(([x, y]) => (x === aa && y === bb) || (x === bb && y === aa))) {
+      movedEdges.push([aa, bb]); // 👈 OK: movedEdges is a tuple array
+    }
+  }
+      // adopt keep's color (per spec: prioritize selected point’s skeleton color)
+      const merged: SkeletonAnn = { ...keep, points: movedPts, edges: movedEdges };
+      this.skeletons.update(arr => {
+        const filtered = arr.filter(s => s.id !== dropId);
+        return filtered.map(s => (s.id === keepId ? merged : s));
+      });
+    };
+
+    const clickExistingPoint = (hit: { skId: Id; pid: string }, ctrl: boolean) => {
+  const sel = this.selection();
+
+  if (sel.type === 'point') {
+    if (sel.id === hit.skId) {
+      // Same skeleton: connect
+      const sk = this.skeletons().find(s => s.id === sel.id)!;
+      ensureEdge(sk, sel.pid, hit.pid);
+      this.selection.set({ type: 'point', id: hit.skId, pid: hit.pid });
+    } else {
+      // Different skeletons: merge into the selected point’s skeleton, then connect
+      const keepId = sel.id;                 // keep selected point's skeleton/color
+      const dropId = hit.skId;
+      mergeSkeletons(keepId, dropId);
+      const merged = this.skeletons().find(s => s.id === keepId)!;
+      ensureEdge(merged, sel.pid, hit.pid);
+      this.selection.set({ type: 'point', id: keepId, pid: hit.pid });
+    }
+
+    // ⬇️ Ctrl toggles chaining vs. exit to Select
+    if (!ctrl) this.currentTool.set(this.selectToolObj);
+
+  } else {
+    // No prior point selected: just select the clicked point; stay in Skeleton tool.
+    this.selection.set({ type: 'point', id: hit.skId, pid: hit.pid });
+  }
+
+  this.requestPaint();
+};
+
+
+    const clickEmpty = (pImg: {x:number;y:number}, ctrl: boolean) => {
+      const sel = this.selection();
+      if (sel.type === 'point') {
+        // add new point, connect to previous
+        const sk = this.skeletons().find(s => s.id === sel.id)!;
+        const { pid: newPid } = addPointToSkeleton(sk, pImg);
+        ensureEdge(this.skeletons().find(s => s.id === sel.id)!, sel.pid, newPid);
+        this.selection.set({ type: 'point', id: sel.id, pid: newPid });
+      } else {
+        // start a brand new skeleton with one point
+        const { sk, pid } = addSkeletonWithPoint(pImg);
+        this.selection.set({ type: 'point', id: sk.id, pid });
+      }
+
+      if (!ctrl) {
+        // one point then leave
+        this.currentTool.set(this.selectToolObj);
+      }
+      this.requestPaint();
+    };
+
     return {
       kind: 'skeleton',
-      onDown: (e, ctx) => { this.currentTool.set(this.selectToolObj); this.currentTool().onDown(e, ctx); },
-      onMove: (e, ctx) => this.selectToolObj.onMove(e, ctx),
-      onUp:   (e, ctx) => this.selectToolObj.onUp(e, ctx),
-      drawOverlay: (g, ctx) => this.selectToolObj.drawOverlay?.(g, ctx),
+      onDown: (e, ctx) => {
+        if (!this.imgLoaded()) return;
+        const ctrl = e.ctrlKey || e.metaKey; // allow Cmd on macs
+        const hit = this.hitTestPoint(e.clientX, e.clientY);
+        if (hit) {
+          clickExistingPoint(hit, ctrl);
+          return;
+        }
+        const p = ctx.clampToImage(ctx.screenToImage(e.clientX, e.clientY));
+        clickEmpty(p, ctrl);
+      },
+      onMove: (_e, _ctx) => {},
+      onUp:   (_e, _ctx) => {},
+      drawOverlay: (_g, _ctx) => {},
     };
   }
 
@@ -755,7 +1153,36 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     };
   }
 
-  /* ---------- Comments tab state ---------- */
+  /* ---------- Delete behavior ---------- */
+  private deleteCurrentSelection() {
+    const s = this.selection();
+    if (s.type === 'skeleton' && s.id != null) {
+      this.skeletons.update(arr => arr.filter(sk => sk.id !== s.id));
+      this.selection.set({ type: null, id: null });
+      this.requestPaint();
+      return;
+    }
+    if (s.type === 'point' && s.id != null) {
+      this.skeletons.update(arr => arr.map(sk => {
+        if (sk.id !== s.id) return sk;
+        const nextPts = { ...sk.points };
+        if (!nextPts[s.pid]) return sk;
+        delete nextPts[s.pid];
+        const nextEdges = sk.edges.filter(([a,b]) => a !== s.pid && b !== s.pid);
+        return { ...sk, points: nextPts, edges: nextEdges };
+      }).filter(sk => Object.keys(sk.points).length > 0));
+      this.selection.set({ type: 'skeleton', id: s.id }); // fallback to skeleton if it still exists
+      this.requestPaint();
+      return;
+    }
+    if (s.type === 'box' && s.id != null) {
+      this.boxes.update(list => list.filter(b => b.id !== s.id));
+      this.selection.set({ type: null, id: null });
+      this.requestPaint(); this.updateScreenLabels();
+    }
+  }
+
+  /* ---------- Comments tab state (unchanged, with handlers) ---------- */
   private slideSvc = inject(SlideService);
   private socket = inject(SocketService);
   private auth = inject(AuthService);
@@ -814,7 +1241,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   }
 
   private disposeSocketHandlers() {
-    // Each observer returns an unsubscribe fn we stored
     for (const off of this.socketSubs) try { off(); } catch {}
     this.socketSubs = [];
   }
@@ -851,7 +1277,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     const incoming = this.mapSocketToModel(c);
     let matchedPending = false;
     this.comments.update(arr => {
-      const idx = arr.findIndex(x => x.isPending && x.userId === incoming.userId && x.content === incoming.content);
+      const idx = arr.findIndex(x => (x as any).isPending && x.userId === incoming.userId && x.content === incoming.content);
       if (idx !== -1) {
         matchedPending = true;
         const copy = arr.slice();
@@ -884,7 +1310,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-
   private applyIncomingDelete(c: SocketCommentDeletedDTO) {
     if (!this.isForCurrentSlide(c.slideId)) return;
     this.comments.update(arr => arr.filter(item => item.id !== c.id));
@@ -904,7 +1329,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-
   addComment() {
     const slideId = this.currentSlideId().trim();
     if (!slideId) { this.snack.open('Enter a Slide ID first', undefined, { duration: 1500 }); return; }
@@ -918,7 +1342,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     if (!this.uuidRegex.test(uid)) { this.snack.open('User ID must be a valid UUID', undefined, { duration: 1800 }); return; }
     this.userId.set(uid);
 
-    // optimistic append (so UI feels instant)
     const optimistic: CommentModel = {
       id: crypto.randomUUID(),
       slideId,
@@ -926,7 +1349,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
       content,
       createdAt: new Date(),
       updatedAt: new Date(),
-      isPending: true,
+      isPending: true as any,
     };
     this.comments.update(arr => {
       const next = arr.slice();
@@ -936,13 +1359,11 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     });
     this.pendingOptimistic.push({ userId: uid, content });
 
-    // emit over socket
     this.socket.createComment(slideId, uid, content);
     this.newComment.set('');
   }
 
   avatarUrl(userId: string): string {
-    // SVG data-URL avatar (initials) so we can use mat-card-image without external calls
     const initial = (userId?.trim()?.[0] ?? '?').toUpperCase();
     const bg = this.hashColor(userId);
     const svg =
@@ -956,9 +1377,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   private hashColor(s: string): string {
     let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
     const r = (h >>> 16) & 0xff, g = (h >>> 8) & 0xff, b = h & 0xff;
-    // soften
     return `rgb(${128 + (r>>1)}, ${128 + (g>>1)}, ${128 + (b>>1)})`;
   }
 }
-
-
