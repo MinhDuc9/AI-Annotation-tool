@@ -1,6 +1,6 @@
 :host { display: contents; }
 
-/* Material tokens → readable aliases */
+/* Material tokens -> readable aliases */
 :root, :host {
   --ed-surface:               var(--mat-sys-surface);
   --ed-surface-variant:       var(--mat-sys-surface-variant);
@@ -129,26 +129,34 @@ label { font-size: .85rem; color: var(--ed-on-surface-variant); }
 }
 .label-chip {
   position: absolute;
-  max-width: 280px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  border: 1px solid color-mix(in oklab, var(--ed-primary) 35%, rgba(255,255,255,.25));
-  background: color-mix(in oklab, var(--ed-surface) 75%, rgba(0,0,0,.15));
-  color: var(--ed-on-surface);
-  font: 12px/16px system-ui, Inter, Segoe UI, sans-serif;
-  display: inline-flex; align-items: center; gap: 6px;
-  box-shadow: 0 2px 6px rgba(0,0,0,.25);
-}
-.label-chip.active {
-  outline: 1px solid color-mix(in oklab, var(--ed-primary) 60%, transparent);
-  background: color-mix(in oklab, var(--ed-primary) 18%, var(--canvas-bg));
-}
-.label-chip .sw   { width: .7rem; height: .7rem; border-radius: 2px; flex: 0 0 auto; }
-.label-chip .text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  height: 20px;
+  line-height: 16px;
+  font-size: 12px;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  border: 1px solid currentColor;
+  border-color: var(--chip-border, #888);
+  border-radius: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 
-/* Swatch in select menu */
-.label-swatch {
-  display: inline-block; width: .85rem; height: .85rem; border-radius: 2px; margin-right: .5rem; vertical-align: middle;
+  /* use inline style borderColor to set this var */
+  &[style*="border-color"] { --chip-border: inherit; }
+
+  &.active { box-shadow: 0 0 0 2px rgba(255,255,255,.15); }
+}
+
+.label-chip.point {
+  /* slightly smaller and lighter for point chips */
+  height: 18px;
+  padding: 1px 6px;
+  font-size: 11px;
+  border-radius: 9px;
 }
 
 /* comments */
@@ -195,11 +203,18 @@ label { font-size: .85rem; color: var(--ed-on-surface-variant); }
 .section { margin-top: 12px; }
 .color-input { width: 100%; height: 32px; padding: 0; border: none; background: transparent; }
 
-/* Optional: make label swatch consistent with boxes */
-.label-swatch {
-  display: inline-block;
-  width: 12px; height: 12px;
-  margin-right: 8px;
-  border-radius: 2px;
-  border: 1px solid rgba(255,255,255,0.2);
+/* Only the "Label Display" block */
+.label-display-group mat-slide-toggle {
+  display: block;
+  margin-bottom: 8px;
+}
+.label-display-group mat-slide-toggle:last-child {
+  margin-bottom: 0;
+}
+
+.stage.pan-mode {
+  cursor: grab;
+}
+.stage.pan-mode.dragging {
+  cursor: grabbing;
 }

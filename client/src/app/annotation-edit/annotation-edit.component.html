@@ -21,24 +21,46 @@
         <button mat-icon-button (click)="sidenavOpen = false" matTooltip="Close"><mat-icon>chevron_right</mat-icon></button>
       </div>
 
-      <div class="side-section">
-        <div class="field">
-          <label>Active Label (for new boxes)</label>
-          <mat-select [value]="activeLabelId()" (valueChange)="activeLabelId.set($event)">
-            @for (l of labels(); track l.id) {
-              <mat-option [value]="l.id">
-                <span class="label-swatch" [style.background]="l.color ?? '#ff8c00'"></span>
-                {{ l.name }}
-              </mat-option>
-            }
-          </mat-select>
-        </div>
+      @if (currentTool().kind === 'box') {
+  <h4 class="section">Active Box</h4>
+  <div class="side-section">
+    <div class="field">
+      <label>Active Label</label>
+      <mat-select [value]="activeLabelId()" (valueChange)="onActiveBoxLabelChange($event)">
+        @for (l of labels(); track l.id) {
+          <mat-option [value]="l.id">{{ l.name }}</mat-option>
+        }
+      </mat-select>
+    </div>
 
-        <div class="field">
-          <label>Active Color (for new boxes)</label>
-          <input type="color" class="color-input" [value]="activeColor()" (input)="onActiveColorInput($event)">
-        </div>
-      </div>
+    <div class="field">
+      <label>Active Color</label>
+      <input type="color" class="color-input"
+             [value]="activeColor()"
+             (input)="onActiveBoxColorInput($event)">
+    </div>
+  </div>
+}
+@if (currentTool().kind === 'skeleton' && !(selection().type === 'point')) {
+  <h4 class="section">Active Skeleton</h4>
+  <div class="side-section">
+    <div class="field">
+      <label>Active Label</label>
+      <mat-select [value]="activeSkelLabelId()" (valueChange)="onActiveSkelLabelChange($event)">
+        @for (l of labels(); track l.id) {
+          <mat-option [value]="l.id">{{ l.name }}</mat-option>
+        }
+      </mat-select>
+    </div>
+
+    <div class="field">
+      <label>Active Color</label>
+      <input type="color" class="color-input"
+             [value]="activeSkelColor()"
+             (input)="onActiveSkelColorInput($event)">
+    </div>
+  </div>
+}
 
       @if (selection().type === 'box' && selection().id !== null) {
         <h4 class="section">Selected Box</h4>
@@ -48,7 +70,6 @@
             <mat-select [value]="selectedBoxLabelId()" (valueChange)="onSelectedLabelChange($event)">
               @for (l of labels(); track l.id) {
                 <mat-option [value]="l.id">
-                  <span class="label-swatch" [style.background]="l.color ?? '#ff8c00'"></span>
                   {{ l.name }}
                 </mat-option>
               }
@@ -86,7 +107,6 @@
       <mat-select [value]="pointLabelId()" (valueChange)="onPointLabelChange($event)">
         @for (l of labels(); track l.id) {
           <mat-option [value]="l.id">
-            <span class="label-swatch" [style.background]="l.color ?? '#888'"></span>
             {{ l.name }}
           </mat-option>
         }
@@ -94,6 +114,22 @@
     </div>
   </div>
 }
+<h4 class="section">Label Display</h4>
+<div class="side-section label-display-group">
+  <mat-slide-toggle
+    [checked]="showBoxLabels()"
+    (change)="showBoxLabels.set($event.checked)">
+    Show box labels
+  </mat-slide-toggle>
+
+  <mat-slide-toggle
+    [checked]="showPointLabels()"
+    (change)="showPointLabels.set($event.checked)">
+    Show keypoint labels
+  </mat-slide-toggle>
+</div>
+
+
 
       <h4 class="section">Boxes</h4>
       <div class="list">
@@ -175,7 +211,7 @@
         <mat-form-field appearance="outline" style="width:100%">
           <textarea matInput
           rows="3"
-          placeholder="Write a comment and press Enter…"
+          placeholder="Write a comment and press Enter..."
           [value]="newComment()"
           (input)="onNewCommentInput($event)"
           (keydown.enter)="addComment(); $event.preventDefault()">
@@ -207,7 +243,7 @@
         <mat-icon fontIcon="pan_tool_alt"></mat-icon>
       </button>
       <button class="tool-btn" (click)="stageZoomBy( 1)" title="Zoom In (+)"><mat-icon fontIcon="zoom_in"></mat-icon></button>
-      <button class="tool-btn" (click)="stageZoomBy(-1)" title="Zoom Out (–)"><mat-icon fontIcon="zoom_out"></mat-icon></button>
+      <button class="tool-btn" (click)="stageZoomBy(-1)" title="Zoom Out (-)"><mat-icon fontIcon="zoom_out"></mat-icon></button>
       <div class="rail-fill"></div>
       <button class="tool-btn small" (click)="sidenavOpen = !sidenavOpen" title="Toggle Sidebar">
         <mat-icon>{{ sidenavOpen ? 'chevron_right' : 'chevron_left' }}</mat-icon>
@@ -220,7 +256,8 @@
          (pointerdown)="onStagePointerDown($event)"
          (pointermove)="onStagePointerMove($event)"
          (pointerup)="onStagePointerUp($event)"
-         (pointercancel)="onStagePointerUp($event)">
+         (pointercancel)="onStagePointerUp($event)"
+         [class.pan-mode]="isPanMode()" [class.dragging]="isPanning()">
 
       <!-- Scaled desk -->
       <div class="desk" #desk
@@ -239,20 +276,33 @@
         </div>
       </div>
 
-      <!-- Unscaled HTML labels (display-only; never clip) -->
-      <div class="label-layer" #labelLayer>
-        @for (lbl of screenLabels(); track lbl.id) {
-          <div class="label-chip"
-               [style.left.px]="lbl.left"
-               [style.top.px]="lbl.top"
-               [style.maxWidth.px]="lbl.maxWidth"
-               [style.borderColor]="lbl.color"
-               [class.active]="isSelected('box', lbl.id)">
-            <span class="sw" [style.background]="lbl.color"></span>
-            <span class="text">{{ lbl.labelName }}</span>
-          </div>
-        }
-      </div>
+      <!-- Unscaled HTML labels -->
+<div class="label-layer" #labelLayer>
+  <!-- Box labels -->
+  @for (lbl of boxLabelChips(); track lbl.id) {
+    <div class="label-chip"
+         [style.left.px]="lbl.left"
+         [style.top.px]="lbl.top"
+         [style.maxWidth.px]="lbl.maxWidth"
+         [style.borderColor]="lbl.color"
+         [class.active]="isSelected('box', lbl.id)">
+      <span class="text">{{ lbl.labelName }}</span>
+    </div>
+  }
+
+  <!-- Point labels -->
+  @for (pl of pointLabelChips(); track pl; let i = $index) {
+    <div class="label-chip point"
+         [style.left.px]="pl.left"
+         [style.top.px]="pl.top"
+         [style.maxWidth.px]="pl.maxWidth"
+         [style.borderColor]="pl.color">
+      <span class="text">{{ pl.labelName }}</span>
+    </div>
+  }
+</div>
+
+
     </div>
   </mat-sidenav-content>
 </mat-sidenav-container>

@@ -22,6 +22,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatCardModule } from '@angular/material/card';
 import { MatTabsModule } from '@angular/material/tabs';
+import {MatSlideToggleModule} from '@angular/material/slide-toggle';
 import { CommentModel, slideCommentDTO, SlideService } from '../services/slide.service';
 import { SocketCommentDTO, SocketCommentDeletedDTO, SocketService } from '../services/socket.service';
 import { AuthService } from '../services/Auth.service';
@@ -30,7 +31,18 @@ import { AnnotationTopbarComponent } from '../annotation-topbar/annotation-topba
 
 /* ---------------- Data models (image space) ---------------- */
 export type Id = number;
-export interface LabelDef { id: string; name: string; color?: string; }
+export interface LabelDef { id: string; name: string; }
+
+// NEW: label chip models (screen-space)
+  type LabelChip = {
+    id: Id;
+    labelId: string;
+    labelName: string;
+    color: string;   // border color
+    left: number;
+    top: number;
+    maxWidth: number;
+  };
 
 export interface BoxAnn {
   id: Id;
@@ -53,7 +65,7 @@ export interface SkeletonAnn {
   id: Id;
   points: Record<string, Keypoint>;
   edges: [string, string][];  // undirected
-  labelId: string;            // optional “type”, not used for color
+  labelId: string;            // optional "type", not used for color
   color: string;              // universal color for all bones in this skeleton
 }
 
@@ -99,6 +111,7 @@ interface Tool {
     MatFormFieldModule,
     MatInputModule,
     MatDividerModule,
+    MatSlideToggleModule,
     AnnotationTopbarComponent
   ],
   templateUrl: './annotation-edit.component.html',
@@ -130,28 +143,45 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   private stageDragging = false;
   private stageLast = { x: 0, y: 0 };
   private spaceHeld = false;
+  
+  isPanMode() { return this.currentTool().kind === 'stagePan' || this.spaceHeld; }
+  isPanning() { return this.stageDragging; }
+
+  // NEW: label visibility toggles
+  showBoxLabels   = signal<boolean>(true);
+  showPointLabels = signal<boolean>(true);
+
+  // Active defaults for creating NEW skeleton annotations
+  activeSkelLabelId = signal<string>('bird');     // default label for NEW points
+  activeSkelColor   = signal<string>('#00e676');  // default color for NEW skeleton bones
+
 
   onStagePointerDown(e: PointerEvent) {
-    if (e.button === 1 || this.spaceHeld) {
-      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-      this.stageDragging = true;
-      this.stageLast = { x: e.clientX, y: e.clientY };
-      e.preventDefault();
-    }
-  }
-  onStagePointerMove(e: PointerEvent) {
-    if (!this.stageDragging) return;
-    const dx = e.clientX - this.stageLast.x;
-    const dy = e.clientY - this.stageLast.y;
-    this.stageLast = { x: e.clientX, y: e.clientY };
-    const p = this.stagePan();
-    this.stagePan.set({ x: p.x + dx, y: p.y + dy });
-    this.updateScreenLabels();
-  }
-  onStagePointerUp(e: PointerEvent) {
-    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-    this.stageDragging = false;
-  }
+  // start pan if: middle mouse OR spacebar held OR pan tool is active
+  const panRequested = e.button === 1 || this.spaceHeld || this.currentTool().kind === 'stagePan';
+  if (!panRequested) return;
+
+  (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  this.stageDragging = true;
+  this.stageLast = { x: e.clientX, y: e.clientY };
+  e.preventDefault();
+}
+
+onStagePointerMove(e: PointerEvent) {
+  if (!this.stageDragging) return;
+  const dx = e.clientX - this.stageLast.x;
+  const dy = e.clientY - this.stageLast.y;
+  this.stageLast = { x: e.clientX, y: e.clientY };
+  const p = this.stagePan();
+  this.stagePan.set({ x: p.x + dx, y: p.y + dy });
+  this.updateScreenLabels();
+}
+
+onStagePointerUp(e: PointerEvent) {
+  (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+  this.stageDragging = false;
+}
+
 
   onStageWheel(e: WheelEvent) {
     e.preventDefault();
@@ -238,9 +268,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
   /* ---------- Data ---------- */
   labels = signal<LabelDef[]>([
-    { id: 'bird', name: 'Bird', color: '#ff8c00' },
-    { id: 'wing', name: 'Wing', color: '#00d7ff' },
-    { id: 'head', name: 'Head', color: '#8bc34a' },
+    { id: 'bird', name: 'Bird' },
+    { id: 'wing', name: 'Wing' },
+    { id: 'head', name: 'Head' },
   ]);
   activeLabelId = signal<string>('bird');     // new boxes
   activeColor   = signal<string>('#ff8c00');  // new boxes
@@ -255,10 +285,8 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   sidenavOpen = true;
 
   /* ---------- Screen-space label chips for BOXES only ---------- */
-  screenLabels = signal<Array<{
-    id: Id; labelId: string; labelName: string; color: string;
-    left: number; top: number; maxWidth: number;
-  }>>([]);
+  boxLabelChips   = signal<LabelChip[]>([]);
+  pointLabelChips = signal<LabelChip[]>([]);
 
   /* ---------- Tools ---------- */
   private boxTool: Tool        = this.makeBoxTool();
@@ -301,12 +329,14 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     this.ro.observe(this.viewportRef.nativeElement);
 
     effect(() => {
-      void this.boxes(); void this.skeletons();
-      void this.canvasSize(); void this.imgLoaded();
-      void this.stagePan(); void this.stageScale();
-      this.requestPaint();
-      this.updateScreenLabels();
-    }, { allowSignalWrites: true, injector: this.injector });
+  void this.boxes(); void this.skeletons();
+  void this.canvasSize(); void this.imgLoaded();
+  void this.stagePan(); void this.stageScale();
+  void this.showBoxLabels(); void this.showPointLabels(); // NEW
+  this.requestPaint();
+  this.updateScreenLabels();
+}, { allowSignalWrites: true, injector: this.injector });
+
 
     this.img.addEventListener('load', () => {
       this.imageWidth.set(this.img.naturalWidth);
@@ -424,6 +454,17 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  onActiveBoxColorInput(e: Event) {
+  this.activeColor.set((e.target as HTMLInputElement)?.value ?? this.activeColor());
+}
+onActiveBoxLabelChange(newId: string) { this.activeLabelId.set(newId); }
+
+onActiveSkelColorInput(e: Event) {
+  this.activeSkelColor.set((e.target as HTMLInputElement)?.value ?? this.activeSkelColor());
+}
+onActiveSkelLabelChange(newId: string) { this.activeSkelLabelId.set(newId); }
+
+
   pointLabelId(): string {
     const sp = this.selectedPoint();
     return sp?.kp.labelId ?? this.activeLabelId();
@@ -457,10 +498,10 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   onPointerDown(e: PointerEvent) {
     const el = (e.currentTarget as HTMLElement);
 
-    if (e.button === 1 || this.spaceHeld) {
-      this.beginStagePan(el, e);
-      e.preventDefault();
-      return;
+    // If pan tool is active (or middle/space), let the stage handler do it
+  if (this.currentTool().kind === 'stagePan' || e.button === 1 || this.spaceHeld) {
+    // Do nothing here; onStagePointerDown handles the drag
+    return;;
     }
     if (this.currentTool().kind === 'stagePan') {
       this.beginStagePan(el, e);
@@ -652,7 +693,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   private viewportRect() { return this.fgCanvasRef.nativeElement.getBoundingClientRect(); }
   private resizeToContainer() { this.ensureDevicePixels(this.bgCanvasRef.nativeElement); this.ensureDevicePixels(this.fgCanvasRef.nativeElement); this.requestPaint(); }
 
-  /** Client → IMAGE px */
+  /** Client -> IMAGE px */
   private screenToImage(clientX: number, clientY: number) {
     const rect = this.viewportRect();
     const lx = clientX - rect.left;
@@ -668,37 +709,75 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   }
 
   private updateScreenLabels() {
-    // only for BOX labels (unchanged)
-    const stageEl = this.stageRef?.nativeElement ?? this.viewportRef.nativeElement.closest('.stage') as HTMLElement;
-    if (!stageEl || !this.imgLoaded()) { this.screenLabels.set([]); return; }
+  const stageEl = this.stageRef?.nativeElement ?? this.viewportRef.nativeElement.closest('.stage') as HTMLElement;
+  if (!stageEl || !this.imgLoaded()) { this.boxLabelChips.set([]); this.pointLabelChips.set([]); return; }
 
-    const stageRect  = stageEl.getBoundingClientRect();
-    const canvasRect = this.fgCanvasRef.nativeElement.getBoundingClientRect();
-    const layerRect  = this.labelLayerRef.nativeElement.getBoundingClientRect();
-    const iw = this.imageWidth(), ih = this.imageHeight();
-    const sx = canvasRect.width  / Math.max(1, iw);
-    const sy = canvasRect.height / Math.max(1, ih);
+  const stageRect  = stageEl.getBoundingClientRect();
+  const canvasRect = this.fgCanvasRef.nativeElement.getBoundingClientRect();
+  const layerRect  = this.labelLayerRef.nativeElement.getBoundingClientRect();
+  const iw = this.imageWidth(), ih = this.imageHeight();
+  const sx = canvasRect.width  / Math.max(1, iw);
+  const sy = canvasRect.height / Math.max(1, ih);
 
-    const margin = 6, chipH = 20, chipW = 200;
+  const chipH = 20;
+  const chipW = 200;
+  const margin = 6;
 
-    const result = this.boxes().map(b => {
-      const bx = canvasRect.left + b.x * sx;
-      const by = canvasRect.top  + b.y * sy;
-      const bw = b.w * sx, bh = b.h * sy;
+  /* ---- BOX LABELS ---- */
+  const boxesOut: LabelChip[] = this.showBoxLabels() ? this.boxes().map(b => {
+    const bx = canvasRect.left + b.x * sx;
+    const by = canvasRect.top  + b.y * sy;
+    const bw = b.w * sx, bh = b.h * sy;
 
-      let L = bx, T = by - chipH - margin;            // above top-left
-      if (T < stageRect.top + 4) T = by + bh + margin; // flip below if hits top
-      if (L < stageRect.left + 4) L = stageRect.left + 4;
-      const maxLeft = stageRect.right - 4 - chipW;
-      if (L > maxLeft) L = maxLeft;
+    let L = bx, T = by - chipH - margin;              // above top-left
+    if (T < stageRect.top + 4) T = by + bh + margin;  // flip below
+    if (L < stageRect.left + 4) L = stageRect.left + 4;
+    const maxLeft = stageRect.right - 4 - chipW;
+    if (L > maxLeft) L = maxLeft;
 
-      const left = L - layerRect.left, top = T - layerRect.top;
+    const left = L - layerRect.left, top = T - layerRect.top;
 
-      return { id: b.id, labelId: b.labelId, labelName: this.labelName(b.labelId), color: b.color, left, top, maxWidth: chipW };
-    });
+    return {
+      id: b.id,
+      labelId: b.labelId,
+      labelName: this.labelName(b.labelId),
+      color: b.color,
+      left, top, maxWidth: chipW
+    } as LabelChip;
+  }) : [];
 
-    this.screenLabels.set(result);
+  /* ---- POINT LABELS ---- */
+  const ptsOut: LabelChip[] = [];
+  if (this.showPointLabels()) {
+    for (const sk of this.skeletons()) {
+      for (const kp of Object.values(sk.points)) {
+        const px = canvasRect.left + kp.x * sx;
+        const py = canvasRect.top  + kp.y * sy;
+
+        let L = px - 4, T = py - chipH - margin;         // above point, slight left
+        if (T < stageRect.top + 4) T = py + margin + 8;  // flip below if clipped
+        if (L < stageRect.left + 4) L = stageRect.left + 4;
+        const maxLeft = stageRect.right - 4 - chipW;
+        if (L > maxLeft) L = maxLeft;
+
+        const left = L - layerRect.left, top = T - layerRect.top;
+
+        // border uses skeleton color; swatch uses the point label's color
+        ptsOut.push({
+          id: sk.id, // use skeleton id for grouping; still unique with position
+          labelId: kp.labelId,
+          labelName: this.labelName(kp.labelId),
+          color: sk.color,
+          left, top, maxWidth: chipW
+        });
+      }
+    }
   }
+
+  this.boxLabelChips.set(boxesOut);
+  this.pointLabelChips.set(ptsOut);
+}
+
 
   /* ---------- Box math ---------- */
   private getBoxCornerCanvasPoints(b: BoxAnn, sx: number, sy: number) {
@@ -1008,7 +1087,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
    *   - Click empty: add new point to same skeleton and connect to previous point.
    *   - Click existing point:
    *       - If same skeleton: connect if not already connected.
-   *       - If different skeletons: connect and MERGE into selected point’s skeleton color.
+   *       - If different skeletons: connect and MERGE into selected point's skeleton color.
    *   Ctrl keeps chaining with the new point; otherwise switch to select tool.
    * - Clicking an existing point (without prior selection): select that point (visual feedback).
    */
@@ -1020,10 +1099,10 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
       const pid = 'p' + (this.pointSeq++);
       const sk: SkeletonAnn = {
         id,
-        points: { [pid]: { id: pid, x: p.x, y: p.y, v: 2, labelId: this.activeLabelId() } },
+        points: { [pid]: { id: pid, x: p.x, y: p.y, v: 2, labelId: this.activeSkelLabelId() } },
         edges: [] as [string, string][],
-        labelId: this.activeLabelId(),
-        color: '#00e676', // default; user can change in sidebar
+        labelId: this.activeSkelLabelId(),
+        color: this.activeSkelColor(), // default; user can change in sidebar
       };
       this.skeletons.update(arr => [...arr, sk]);
       return { sk, pid };
@@ -1033,7 +1112,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
       const pid = 'p' + (this.pointSeq++);
       const next: SkeletonAnn = {
         ...sk,
-        points: { ...sk.points, [pid]: { id: pid, x: p.x, y: p.y, v: 2, labelId: this.activeLabelId() } }
+        points: { ...sk.points, [pid]: { id: pid, x: p.x, y: p.y, v: 2, labelId: this.activeSkelLabelId() } }
       };
       this.skeletons.update(arr => arr.map(s => s.id === sk.id ? next : s));
       return { pid };
@@ -1067,10 +1146,10 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     const aa = movedPts[a] ? a : ('m' + a in movedPts ? ('m' + a) : a);
     const bb = movedPts[b] ? b : ('m' + b in movedPts ? ('m' + b) : b);
     if (!movedEdges.some(([x, y]) => (x === aa && y === bb) || (x === bb && y === aa))) {
-      movedEdges.push([aa, bb]); // 👈 OK: movedEdges is a tuple array
+      movedEdges.push([aa, bb]); // <- OK: movedEdges is a tuple array
     }
   }
-      // adopt keep's color (per spec: prioritize selected point’s skeleton color)
+      // adopt keep's color (per spec: prioritize selected point's skeleton color)
       const merged: SkeletonAnn = { ...keep, points: movedPts, edges: movedEdges };
       this.skeletons.update(arr => {
         const filtered = arr.filter(s => s.id !== dropId);
@@ -1088,7 +1167,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
       ensureEdge(sk, sel.pid, hit.pid);
       this.selection.set({ type: 'point', id: hit.skId, pid: hit.pid });
     } else {
-      // Different skeletons: merge into the selected point’s skeleton, then connect
+      // Different skeletons: merge into the selected point's skeleton, then connect
       const keepId = sel.id;                 // keep selected point's skeleton/color
       const dropId = hit.skId;
       mergeSkeletons(keepId, dropId);
@@ -1097,7 +1176,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
       this.selection.set({ type: 'point', id: keepId, pid: hit.pid });
     }
 
-    // ⬇️ Ctrl toggles chaining vs. exit to Select
+    // Ctrl toggles chaining vs. exit to Select
     if (!ctrl) this.currentTool.set(this.selectToolObj);
 
   } else {
