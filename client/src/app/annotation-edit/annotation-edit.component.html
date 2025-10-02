@@ -21,16 +21,59 @@
         <button mat-icon-button (click)="sidenavOpen = false" matTooltip="Close"><mat-icon>chevron_right</mat-icon></button>
       </div>
 
-      @if (currentTool().kind === 'box') {
+@if (currentTool().kind === 'box') {
   <h4 class="section">Active Box</h4>
   <div class="side-section">
     <div class="field">
       <label>Active Label</label>
-      <mat-select [value]="activeLabelId()" (valueChange)="onActiveBoxLabelChange($event)">
-        @for (l of labels(); track l.id) {
-          <mat-option [value]="l.id">{{ l.name }}</mat-option>
+     <mat-form-field appearance="outline" style="width:100%">
+
+  <mat-select
+  [value]="activeLabelId()"
+  (valueChange)="onActiveBoxLabelChange($event)"
+  [hideSingleSelectionIndicator]="true"
+  panelClass="label-panel"
+  (openedChange)="!$event && hoveredLabelId.set(null)">
+  <mat-select-trigger>{{ boxLabelNameById(activeLabelId()) }}</mat-select-trigger>
+
+  @for (l of boxLabels(); track l.id) {
+    <mat-option
+      [value]="l.id"
+      class="label-opt"
+      (mouseenter)="hoveredLabelId.set(l.id)"
+      (mouseleave)="hoveredLabelId.set(null)">
+      <span class="opt-text">{{ l.name }}</span>
+      <span class="opt-indicator">
+        @if (hoveredLabelId() === l.id) {
+          <!-- inside the option's right-side indicator container -->
+<span class="opt-tip"
+      [matTooltip]="boxLabelTooltip(l.id)">
+  <button
+    mat-icon-button
+    type="button"
+    class="opt-minus"
+    tabindex="-1"
+    (click)="$event.stopPropagation(); deleteBoxLabelCompact(l.id)"
+    [disabled]="!canDeleteBoxLabel(l.id)">
+    <mat-icon fontIcon="remove"></mat-icon>
+  </button>
+</span>
+
+        } @else if (isSelectedOption(l.id, activeLabelId())) {
+          <mat-icon class="opt-check" fontIcon="check"></mat-icon>
         }
-      </mat-select>
+      </span>
+    </mat-option>
+  }
+</mat-select>
+
+
+  <button mat-icon-button matSuffix aria-label="Add label" (click)="addBoxLabelPrompt()">
+    <mat-icon fontIcon="add"></mat-icon>
+  </button>
+</mat-form-field>
+
+
     </div>
 
     <div class="field">
@@ -41,16 +84,63 @@
     </div>
   </div>
 }
+
+
 @if (currentTool().kind === 'skeleton' && !(selection().type === 'point')) {
   <h4 class="section">Active Skeleton</h4>
   <div class="side-section">
     <div class="field">
-      <label>Active Label</label>
-      <mat-select [value]="activeSkelLabelId()" (valueChange)="onActiveSkelLabelChange($event)">
-        @for (l of labels(); track l.id) {
-          <mat-option [value]="l.id">{{ l.name }}</mat-option>
-        }
-      </mat-select>
+      <label id="activeSkelLabel">Active Label</label>
+
+      <mat-form-field appearance="outline" style="width:100%">
+        <mat-select
+          aria-labelledby="activeSkelLabel"
+          [value]="activeSkelLabelId()"
+          (valueChange)="onActiveSkelLabelChange($event)"
+          [hideSingleSelectionIndicator]="true"
+          panelClass="anno-label-panel"
+          (openedChange)="!$event && hoveredLabelId.set(null)">
+
+          <mat-select-trigger>
+            {{ skelLabelNameById(activeSkelLabelId()) }}
+          </mat-select-trigger>
+
+          @for (l of skelLabels(); track l.id) {
+            <mat-option
+              [value]="l.id"
+              class="label-opt"
+              (mouseenter)="hoveredLabelId.set(l.id)"
+              (mouseleave)="hoveredLabelId.set(null)">
+
+              <span class="opt-text">{{ l.name }}</span>
+              <span class="opt-indicator">
+                @if (hoveredLabelId() === l.id) {
+                  <span class="opt-tip"
+      [matTooltip]="skelLabelTooltip(l.id)">
+  <button
+    mat-icon-button
+    type="button"
+    class="opt-minus"
+    tabindex="-1"
+    (click)="$event.stopPropagation(); deleteSkelLabelCompact(l.id)"
+    [disabled]="!canDeleteSkelLabel(l.id)">
+    <mat-icon fontIcon="remove"></mat-icon>
+  </button>
+</span>
+
+                } @else if (isSelectedOption(l.id, activeSkelLabelId())) {
+                  <mat-icon class="opt-check" fontIcon="check"></mat-icon>
+                }
+              </span>
+            </mat-option>
+          }
+        </mat-select>
+
+        <!-- add (+) -->
+        <button mat-icon-button matSuffix aria-label="Add keypoint label" (click)="addSkelLabelPrompt()">
+          <mat-icon fontIcon="add"></mat-icon>
+        </button>
+      </mat-form-field>
     </div>
 
     <div class="field">
@@ -62,19 +152,64 @@
   </div>
 }
 
+
       @if (selection().type === 'box' && selection().id !== null) {
-        <h4 class="section">Selected Box</h4>
-        <div class="side-section">
-          <div class="field">
-            <label>Label</label>
-            <mat-select [value]="selectedBoxLabelId()" (valueChange)="onSelectedLabelChange($event)">
-              @for (l of labels(); track l.id) {
-                <mat-option [value]="l.id">
-                  {{ l.name }}
-                </mat-option>
-              }
-            </mat-select>
-          </div>
+<h4 class="section">Selected Box</h4>
+  <div class="side-section">
+    <div class="field">
+      <label id="selectedBoxLabel">Label</label>
+
+      <mat-form-field appearance="outline" style="width:100%">
+        <mat-select
+          aria-labelledby="selectedBoxLabel"
+          [value]="selectedBoxLabelId()"
+          (valueChange)="onSelectedLabelChange($event)"
+          [hideSingleSelectionIndicator]="true"
+          panelClass="anno-label-panel"
+          (openedChange)="!$event && hoveredLabelId.set(null)">
+
+          <mat-select-trigger>
+            {{ boxLabelNameById(selectedBoxLabelId()) }}
+          </mat-select-trigger>
+
+          @for (l of boxLabels(); track l.id) {
+            <mat-option
+              [value]="l.id"
+              class="label-opt"
+              (mouseenter)="hoveredLabelId.set(l.id)"
+              (mouseleave)="hoveredLabelId.set(null)">
+
+              <span class="opt-text">{{ l.name }}</span>
+              <span class="opt-indicator">
+                @if (hoveredLabelId() === l.id) {
+                  <!-- inside the option's right-side indicator container -->
+<span class="opt-tip"
+      [matTooltip]="boxLabelTooltip(l.id)">
+  <button
+    mat-icon-button
+    type="button"
+    class="opt-minus"
+    tabindex="-1"
+    (click)="$event.stopPropagation(); deleteBoxLabelCompact(l.id)"
+    [disabled]="!canDeleteBoxLabel(l.id)">
+    <mat-icon fontIcon="remove"></mat-icon>
+  </button>
+</span>
+
+                } @else if (isSelectedOption(l.id, selectedBoxLabelId())) {
+                  <mat-icon class="opt-check" fontIcon="check"></mat-icon>
+                }
+              </span>
+            </mat-option>
+          }
+        </mat-select>
+
+        <!-- add (+) -->
+        <button mat-icon-button matSuffix aria-label="Add label" (click)="addBoxLabelPrompt()">
+          <mat-icon fontIcon="add"></mat-icon>
+        </button>
+      </mat-form-field>
+    </div>
           <div class="field">
             <label>Color</label>
             <input type="color" class="color-input" [value]="selectedBoxColor()" (input)="onSelectedColorInput($event)">
@@ -98,20 +233,64 @@
   <h4 class="section">Selected Point</h4>
   <div class="side-section">
     <div class="field">
+      <label id="selectedPointLabel">Point Label</label>
+
+      <mat-form-field appearance="outline" style="width:100%">
+        <mat-select
+          aria-labelledby="selectedPointLabel"
+          [value]="pointLabelId()"
+          (valueChange)="onPointLabelChange($event)"
+          [hideSingleSelectionIndicator]="true"
+          panelClass="anno-label-panel"
+          (openedChange)="!$event && hoveredLabelId.set(null)">
+
+          <mat-select-trigger>
+            {{ skelLabelNameById(pointLabelId()) }}
+          </mat-select-trigger>
+
+          @for (l of skelLabels(); track l.id) {
+            <mat-option
+              [value]="l.id"
+              class="label-opt"
+              (mouseenter)="hoveredLabelId.set(l.id)"
+              (mouseleave)="hoveredLabelId.set(null)">
+
+              <span class="opt-text">{{ l.name }}</span>
+              <span class="opt-indicator">
+                @if (hoveredLabelId() === l.id) {
+                  <span class="opt-tip"
+      [matTooltip]="skelLabelTooltip(l.id)">
+  <button
+    mat-icon-button
+    type="button"
+    class="opt-minus"
+    tabindex="-1"
+    (click)="$event.stopPropagation(); deleteSkelLabelCompact(l.id)"
+    [disabled]="!canDeleteSkelLabel(l.id)">
+    <mat-icon fontIcon="remove"></mat-icon>
+  </button>
+</span>
+
+                } @else if (isSelectedOption(l.id, pointLabelId())) {
+                  <mat-icon class="opt-check" fontIcon="check"></mat-icon>
+                }
+              </span>
+            </mat-option>
+          }
+        </mat-select>
+
+        <!-- add (+) -->
+        <button mat-icon-button matSuffix aria-label="Add keypoint label" (click)="addSkelLabelPrompt()">
+          <mat-icon fontIcon="add"></mat-icon>
+        </button>
+      </mat-form-field>
+    </div>
+    <div class="field">
       <label>Skeleton Color</label>
       <input type="color" class="color-input" [value]="skeletonColor()" (input)="onSkeletonColorInput($event)">
     </div>
 
-    <div class="field">
-      <label>Point Label</label>
-      <mat-select [value]="pointLabelId()" (valueChange)="onPointLabelChange($event)">
-        @for (l of labels(); track l.id) {
-          <mat-option [value]="l.id">
-            {{ l.name }}
-          </mat-option>
-        }
-      </mat-select>
-    </div>
+
   </div>
 }
 <h4 class="section">Label Display</h4>
@@ -139,7 +318,7 @@
           @for (b of boxes(); track b.id) {
             <div class="row" [class.active]="isSelected('box', b.id)" (click)="selectEntity('box', b.id)">
               <span class="sw" [style.background]="b.color"></span>
-              <span class="name">{{ labelName(b.labelId) }} #{{ b.id }}</span>
+              <span class="name">{{ boxLabelName(b.labelId) }} #{{ b.id }}</span>
               <span class="meta">{{ b.w | number:'1.0-0' }}×{{ b.h | number:'1.0-0' }}</span>
             </div>
           }

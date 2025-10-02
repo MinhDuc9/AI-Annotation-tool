@@ -218,3 +218,148 @@ label { font-size: .85rem; color: var(--ed-on-surface-variant); }
 .stage.pan-mode.dragging {
   cursor: grabbing;
 }
+
+/* Keep option text and compact delete icon aligned */
+.mat-mdc-option .opt-text { flex: 1; }
+.mat-mdc-option .opt-icon {
+  pointer-events: auto; /* allow click inside option */
+}
+
+/* Option layout */
+.label-opt {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Reserve space so text doesn't collide with the indicator */
+.label-opt .opt-text { padding-right: 32px; }
+
+/* Indicator cluster sits where the native tick used to be */
+.label-opt .opt-indicator {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Show check by default, hide minus */
+.label-opt .opt-check { opacity: 1; transition: opacity 120ms; }
+.label-opt .opt-minus { opacity: 0; pointer-events: none; transition: opacity 120ms; }
+
+/* On hover/focus: swap check -> minus */
+.label-opt:hover .opt-check,
+.label-opt:focus-within .opt-check { opacity: 0; }
+
+.label-opt:hover .opt-minus,
+.label-opt:focus-within .opt-minus { opacity: 1; pointer-events: auto; }
+
+/* Disabled minus looks muted */
+.label-opt .opt-minus[disabled] { opacity: .35; pointer-events: none; cursor: not-allowed; }
+
+/* option row layout */
+.label-opt {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* keep text from colliding with the indicator cluster */
+.label-opt .opt-text { padding-right: 36px; }
+
+/* indicator cluster sits where Material's tick would be */
+.label-opt .opt-indicator {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; height: 24px;   /* consistent hitbox */
+}
+
+/* default state: NO check, NO minus */
+.label-opt .opt-check { opacity: 0; transition: opacity 120ms; }
+.label-opt .opt-minus { opacity: 0; pointer-events: none; transition: opacity 120ms; }
+
+/* show check only when the option is selected */
+.label-opt.mdc-list-item--selected .opt-check,
+.label-opt[aria-selected="true"] .opt-check {
+  opacity: 1;
+}
+
+/* on hover/focus, swap check -> minus */
+.label-opt:hover .opt-check,
+.label-opt:focus-within .opt-check {
+  opacity: 0;
+}
+.label-opt:hover .opt-minus,
+.label-opt:focus-within .opt-minus {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* disable minus look */
+.label-opt .opt-minus[disabled] {
+  opacity: .35;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* optional: normalize icon sizes so check and minus align perfectly */
+.label-opt .opt-check,
+.label-opt .opt-minus .mat-icon {
+  font-size: 20px;
+  width: 20px; height: 20px; line-height: 20px;
+}
+
+/* Applies only to selects that set panelClass="label-panel" */
+.label-panel .mat-mdc-option.label-opt .mdc-list-item__primary-text {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.label-panel .mat-mdc-option.label-opt .opt-indicator {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+/* Normalize icon sizes so check and minus share the same box */
+.label-panel .mat-mdc-option.label-opt .opt-check,
+.label-panel .mat-mdc-option.label-opt .opt-minus .mat-icon {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+}
+
+/* Make the minus icon-button fit the 24×24 indicator box */
+.label-panel .mat-mdc-option.label-opt .opt-minus.mat-mdc-icon-button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+
+/* Softer look for disabled minus */
+.label-panel .mat-mdc-option.label-opt .opt-minus[disabled] {
+  opacity: .35;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* host for tooltip around the minus button */
+.opt-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}

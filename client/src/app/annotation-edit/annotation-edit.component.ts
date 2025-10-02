@@ -151,9 +151,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   showBoxLabels   = signal<boolean>(true);
   showPointLabels = signal<boolean>(true);
 
-  // Active defaults for creating NEW skeleton annotations
-  activeSkelLabelId = signal<string>('bird');     // default label for NEW points
-  activeSkelColor   = signal<string>('#00e676');  // default color for NEW skeleton bones
 
 
   onStagePointerDown(e: PointerEvent) {
@@ -267,13 +264,28 @@ onStagePointerUp(e: PointerEvent) {
   private ro?: ResizeObserver;
 
   /* ---------- Data ---------- */
-  labels = signal<LabelDef[]>([
-    { id: 'bird', name: 'Bird' },
-    { id: 'wing', name: 'Wing' },
-    { id: 'head', name: 'Head' },
-  ]);
-  activeLabelId = signal<string>('bird');     // new boxes
+  boxLabels  = signal<LabelDef[]>([
+  { id: 'box-bird', name: 'Bird' },
+  { id: 'box-wing', name: 'Wing' },
+  { id: 'box-head', name: 'Head' },
+]);
+  skelLabels = signal<LabelDef[]>([
+  { id: 'kp-eye',    name: 'Eye' },
+  { id: 'kp-beak',   name: 'Beak' },
+  { id: 'kp-wingtip',name: 'Wing Tip' },
+]);
+
+// Active defaults (creation)
+activeLabelId     = signal<string>(this.boxLabels()[0]?.id ?? '');
+activeSkelLabelId = signal<string>(this.skelLabels()[0]?.id ?? '');
+
+// Inputs for "Add label" forms
+newBoxLabelName  = signal<string>('');
+newSkelLabelName = signal<string>('');
+  
   activeColor   = signal<string>('#ff8c00');  // new boxes
+  activeSkelColor   = signal<string>('#00e676');  // default color for NEW skeleton bones
+
 
   boxes = signal<BoxAnn[]>([]);
 
@@ -304,8 +316,6 @@ onStagePointerUp(e: PointerEvent) {
     );
     this.requestPaint();
   }
-
-  labelName = (id: string) => this.labels().find(l => l.id === id)?.name ?? id;
 
   /* ---------- Paint scheduling ---------- */
   private needsPaint = false;
@@ -373,19 +383,24 @@ onStagePointerUp(e: PointerEvent) {
   }
 
   onExport() {
-    const payload = {
-      image: { width: this.imageWidth(), height: this.imageHeight(), file: this.img.src },
-      labels: this.labels(),
-      boxes: this.boxes(),
-      skeletons: this.skeletons(),
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.download = 'annotations.json'; a.href = url; a.click();
-    URL.revokeObjectURL(url);
-    this.snack.open('Exported annotations.json', undefined, { duration: 1600 });
-  }
+  const payload = {
+    image: { width: this.imageWidth(), height: this.imageHeight(), file: this.img.src },
+    boxLabels: this.boxLabels(),      // <- boxes' label set
+    skelLabels: this.skelLabels(),    // <- keypoints' label set
+    boxes: this.boxes(),
+    skeletons: this.skeletons(),
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.download = 'annotations.json';
+  a.href = url;
+  a.click();
+  URL.revokeObjectURL(url);
+  this.snack.open('Exported annotations.json', undefined, { duration: 1600 });
+}
+
 
   onActiveColorInput(e: Event) {
     const value = (e.target as HTMLInputElement)?.value ?? this.activeColor();
@@ -463,6 +478,194 @@ onActiveSkelColorInput(e: Event) {
   this.activeSkelColor.set((e.target as HTMLInputElement)?.value ?? this.activeSkelColor());
 }
 onActiveSkelLabelChange(newId: string) { this.activeSkelLabelId.set(newId); }
+
+private slugify(name: string) {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+private ensureUniqueId(base: string, taken: Set<string>) {
+  let id = base, i = 2;
+  while (taken.has(id)) id = `${base}-${i++}`;
+  return id;
+}
+boxLabelName = (id: string) => this.boxLabels().find(l => l.id === id)?.name ?? id;
+skelLabelName = (id: string) => this.skelLabels().find(l => l.id === id)?.name ?? id;
+
+isBoxLabelUsed(id: string): boolean {
+  return this.boxes().some(b => b.labelId === id);
+}
+isSkelLabelUsed(id: string): boolean {
+  return this.skeletons().some(sk => Object.values(sk.points).some(kp => kp.labelId === id));
+}
+
+boxLabelNameById(id: string | null | undefined): string {
+  if (!id) return '-';
+  return this.boxLabels().find(l => l.id === id)?.name ?? '-';
+}
+skelLabelNameById(id: string | null | undefined): string {
+  if (!id) return '-';
+  return this.skelLabels().find(l => l.id === id)?.name ?? '-';
+}
+
+// which option row is currently hovered (any dropdown)
+hoveredLabelId = signal<string | null>(null);
+
+// convenience for showing the check
+isSelectedOption(id: string, currentId: string | null | undefined): boolean {
+  return !!currentId && id === currentId;
+}
+
+
+addBoxLabel() {
+  const name = this.newBoxLabelName().trim();
+  if (!name) return;
+  const taken = new Set(this.boxLabels().map(l => l.id));
+  const base = `box-${this.slugify(name) || 'label'}`;
+  const id = this.ensureUniqueId(base, taken);
+
+  // prevent duplicate names (case-insensitive)
+  if (this.boxLabels().some(l => l.name.toLowerCase() === name.toLowerCase())) {
+    this.snack.open('A box label with that name already exists.', undefined, { duration: 1500 });
+    return;
+  }
+
+  this.boxLabels.update(arr => [...arr, { id, name }]);
+  // if no active or the user just added the first, set active
+  if (!this.activeLabelId() || this.boxLabels().length === 1) this.activeLabelId.set(id);
+  this.newBoxLabelName.set('');
+}
+
+addSkelLabel() {
+  const name = this.newSkelLabelName().trim();
+  if (!name) return;
+  const taken = new Set(this.skelLabels().map(l => l.id));
+  const base = `kp-${this.slugify(name) || 'label'}`;
+  const id = this.ensureUniqueId(base, taken);
+
+  if (this.skelLabels().some(l => l.name.toLowerCase() === name.toLowerCase())) {
+    this.snack.open('A keypoint label with that name already exists.', undefined, { duration: 1500 });
+    return;
+  }
+
+  this.skelLabels.update(arr => [...arr, { id, name }]);
+  if (!this.activeSkelLabelId() || this.skelLabels().length === 1) this.activeSkelLabelId.set(id);
+  this.newSkelLabelName.set('');
+}
+
+// --- Add: compact add/delete handlers (BOX) ---
+addBoxLabelPrompt() {
+  const name = (window.prompt('New box label name?') || '').trim();
+  if (!name) return;
+
+  // case-insensitive duplicate name check
+  if (this.boxLabels().some(l => l.name.toLowerCase() === name.toLowerCase())) {
+    this.snack.open('A box label with that name already exists.', undefined, { duration: 1600 });
+    return;
+  }
+
+  const taken = new Set(this.boxLabels().map(l => l.id));
+  const base  = `box-${this.slugify(name) || 'label'}`;
+  const id    = this.ensureUniqueId(base, taken);
+
+  this.boxLabels.update(arr => [...arr, { id, name }]);
+  if (!this.activeLabelId()) this.activeLabelId.set(id);
+}
+
+// --- Add: compact add/delete handlers (SKELETON KEYPOINT) ---
+addSkelLabelPrompt() {
+  const name = (window.prompt('New keypoint label name?') || '').trim();
+  if (!name) return;
+
+  if (this.skelLabels().some(l => l.name.toLowerCase() === name.toLowerCase())) {
+    this.snack.open('A keypoint label with that name already exists.', undefined, { duration: 1600 });
+    return;
+  }
+
+  const taken = new Set(this.skelLabels().map(l => l.id));
+  const base  = `kp-${this.slugify(name) || 'label'}`;
+  const id    = this.ensureUniqueId(base, taken);
+
+  this.skelLabels.update(arr => [...arr, { id, name }]);
+  if (!this.activeSkelLabelId()) this.activeSkelLabelId.set(id);
+}
+
+// BOX
+deleteBoxLabelCompact(id: string) {
+  // block if this is the last label
+  if (this.boxLabels().length <= 1) {
+    this.snack.open('You must keep at least one box label.', undefined, { duration: 1800 });
+    return;
+  }
+  // block if label is in use
+  if (this.isBoxLabelUsed(id)) {
+    this.snack.open('Cannot delete: label is used by a box annotation.', undefined, { duration: 1800 });
+    return;
+  }
+  const next = this.boxLabels().filter(l => l.id !== id);
+  this.boxLabels.set(next);
+  if (this.activeLabelId() === id) this.activeLabelId.set(next[0]?.id ?? '');
+}
+
+// If you still call these "full" versions anywhere, patch them too:
+deleteBoxLabel(id: string) {
+  if (this.boxLabels().length <= 1) {
+    this.snack.open('You must keep at least one box label.', undefined, { duration: 1800 });
+    return;
+  }
+  if (this.isBoxLabelUsed(id)) {
+    this.snack.open('Cannot delete: label is used by a box annotation.', undefined, { duration: 1800 });
+    return;
+  }
+  this.boxLabels.update(arr => arr.filter(l => l.id !== id));
+  if (this.activeLabelId() === id) this.activeLabelId.set(this.boxLabels()[0]?.id ?? '');
+}
+
+// SKELETON
+deleteSkelLabelCompact(id: string) {
+  if (this.skelLabels().length <= 1) {
+    this.snack.open('You must keep at least one keypoint label.', undefined, { duration: 1800 });
+    return;
+  }
+  if (this.isSkelLabelUsed(id)) {
+    this.snack.open('Cannot delete: label is used by a keypoint.', undefined, { duration: 1800 });
+    return;
+  }
+  const next = this.skelLabels().filter(l => l.id !== id);
+  this.skelLabels.set(next);
+  if (this.activeSkelLabelId() === id) this.activeSkelLabelId.set(next[0]?.id ?? '');
+}
+
+deleteSkelLabel(id: string) {
+  if (this.skelLabels().length <= 1) {
+    this.snack.open('You must keep at least one keypoint label.', undefined, { duration: 1800 });
+    return;
+  }
+  if (this.isSkelLabelUsed(id)) {
+    this.snack.open('Cannot delete: label is used by a keypoint.', undefined, { duration: 1800 });
+    return;
+  }
+  this.skelLabels.update(arr => arr.filter(l => l.id !== id));
+  if (this.activeSkelLabelId() === id) this.activeSkelLabelId.set(this.skelLabels()[0]?.id ?? '');
+}
+
+// BOX
+canDeleteBoxLabel(id: string): boolean {
+  return this.boxLabels().length > 1 && !this.isBoxLabelUsed(id);
+}
+boxLabelTooltip(id: string): string {
+  if (this.boxLabels().length <= 1) return 'At least one label is required';
+  if (this.isBoxLabelUsed(id)) return 'In use - cannot delete';
+  return 'Delete label';
+}
+
+// SKELETON
+canDeleteSkelLabel(id: string): boolean {
+  return this.skelLabels().length > 1 && !this.isSkelLabelUsed(id);
+}
+skelLabelTooltip(id: string): string {
+  if (this.skelLabels().length <= 1) return 'At least one label is required';
+  if (this.isSkelLabelUsed(id)) return 'In use - cannot delete';
+  return 'Delete label';
+}
 
 
   pointLabelId(): string {
@@ -740,7 +943,7 @@ onActiveSkelLabelChange(newId: string) { this.activeSkelLabelId.set(newId); }
     return {
       id: b.id,
       labelId: b.labelId,
-      labelName: this.labelName(b.labelId),
+      labelName: this.boxLabelName(b.labelId),
       color: b.color,
       left, top, maxWidth: chipW
     } as LabelChip;
@@ -766,7 +969,7 @@ onActiveSkelLabelChange(newId: string) { this.activeSkelLabelId.set(newId); }
         ptsOut.push({
           id: sk.id, // use skeleton id for grouping; still unique with position
           labelId: kp.labelId,
-          labelName: this.labelName(kp.labelId),
+          labelName: this.skelLabelName(kp.labelId),
           color: sk.color,
           left, top, maxWidth: chipW
         });
