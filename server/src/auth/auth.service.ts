@@ -4,13 +4,13 @@ import {
     UnauthorizedException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { JwtService } from "src/jwt/jwt.service";
-import { User } from "src/user/entities/user.entity";
+import { JwtService } from "../jwt/jwt.service";
+import { User } from "../user/entities/user.entity";
 import { Repository } from "typeorm/repository/Repository";
-import { CreateUserDto } from "src/user/dto/create-user.dto";
+import { CreateUserDto } from "../user/dto/create-user.dto";
 import { BadRequestException } from "@nestjs/common";
 import { QueryFailedError } from "typeorm";
-import { LoginUserDto } from "src/user/dto/login-user.dto";
+import { LoginUserDto } from "../user/dto/login-user.dto";
 
 @Injectable()
 export class AuthService {

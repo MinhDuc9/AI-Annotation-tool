@@ -8,7 +8,7 @@ import {
     CreateDateColumn,
     UpdateDateColumn,
 } from "typeorm";
-import { Slide } from "src/slide/entities/slide.entity";
+import { Slide } from "../../slide/entities/slide.entity";
 
 @Entity()
 export class Comment {

@@ -8,17 +8,17 @@ import * as path from "path";
 import { createReadStream, promises as fs } from "fs";
 import { UpdateSlideDto } from "./dto/update-slide.dto";
 import { Slide } from "./entities/slide.entity";
-import { ProjectService } from "src/project/project.service";
+import { ProjectService } from "../project/project.service";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { CommentService } from "src/comment/comment.service";
-import { Comment } from "src/comment/entities/comment.entity";
-import { SkeletalService } from "src/skeletal/skeletal.service";
-import { CreateSkeletalDto } from "src/skeletal/dto/create-skeletal.dto";
-import { UpdateSkeletalDto } from "src/skeletal/dto/update-skeletal.dto";
-import { BoundingBoxService } from "src/bounding-box/bounding-box.service";
-import { CreateBoundingBoxDto } from "src/bounding-box/dto/create-bounding-box.dto";
-import { UpdateBoundingBoxDto } from "src/bounding-box/dto/update-bounding-box.dto";
+import { CommentService } from "../comment/comment.service";
+import { Comment } from "../comment/entities/comment.entity";
+import { SkeletalService } from "../skeletal/skeletal.service";
+import { CreateSkeletalDto } from "../skeletal/dto/create-skeletal.dto";
+import { UpdateSkeletalDto } from "../skeletal/dto/update-skeletal.dto";
+import { BoundingBoxService } from "../bounding-box/bounding-box.service";
+import { CreateBoundingBoxDto } from "../bounding-box/dto/create-bounding-box.dto";
+import { UpdateBoundingBoxDto } from "../bounding-box/dto/update-bounding-box.dto";
 
 // Minimal shape we need from a Multer file to avoid ambient type dependency
 interface MulterLikeFile {

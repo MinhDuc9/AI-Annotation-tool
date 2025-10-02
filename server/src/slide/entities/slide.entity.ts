@@ -7,10 +7,10 @@ import {
     JoinColumn,
     OneToMany,
 } from "typeorm";
-import { Project } from "src/project/entities/project.entity";
-import { Comment } from "src/comment/entities/comment.entity";
-import { Skeletal } from "src/skeletal/entities/skeletal.entity";
-import { BoundingBox } from "src/bounding-box/entities/bounding-box.entity";
+import { Project } from "../../project/entities/project.entity";
+import { Comment } from "../../comment/entities/comment.entity";
+import { Skeletal } from "../../skeletal/entities/skeletal.entity";
+import { BoundingBox } from "../../bounding-box/entities/bounding-box.entity";
 
 @Entity()
 export class Slide {

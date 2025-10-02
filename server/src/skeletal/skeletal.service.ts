@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Skeletal } from "./entities/skeletal.entity";
-import { Slide } from "src/slide/entities/slide.entity";
+import { Slide } from "../slide/entities/slide.entity";
 import { CreateSkeletalDto } from "./dto/create-skeletal.dto";
 import { UpdateSkeletalDto } from "./dto/update-skeletal.dto";
 

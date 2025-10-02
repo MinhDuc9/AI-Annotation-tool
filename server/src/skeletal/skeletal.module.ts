@@ -2,7 +2,7 @@ import { Module } from "@nestjs/common";
 import { SkeletalService } from "./skeletal.service";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { Skeletal } from "./entities/skeletal.entity";
-import { Slide } from "src/slide/entities/slide.entity";
+import { Slide } from "../slide/entities/slide.entity";
 import { SkeletalGateway } from "./skeletal.gateway";
 import { BullModule } from "@nestjs/bullmq";
 import { SkeletalProcessor } from "./skeletal.processor";

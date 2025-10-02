@@ -5,9 +5,9 @@ import {
     ForbiddenException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { JwtPayload } from "src/jwt/jwt-payload.interface";
+import { JwtPayload } from "../jwt/jwt-payload.interface";
 import { Request } from "express";
-import { ProjectUserRoleService } from "src/project-user-role/project-user-role.service";
+import { ProjectUserRoleService } from "../project-user-role/project-user-role.service";
 
 @Injectable()
 export class RolesGuard implements CanActivate {

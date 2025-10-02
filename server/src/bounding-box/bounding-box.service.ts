@@ -4,7 +4,7 @@ import { Repository } from "typeorm";
 import { CreateBoundingBoxDto } from "./dto/create-bounding-box.dto";
 import { UpdateBoundingBoxDto } from "./dto/update-bounding-box.dto";
 import { BoundingBox } from "./entities/bounding-box.entity";
-import { Slide } from "src/slide/entities/slide.entity";
+import { Slide } from "../slide/entities/slide.entity";
 
 @Injectable()
 export class BoundingBoxService {

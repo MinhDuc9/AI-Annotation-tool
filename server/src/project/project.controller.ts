@@ -11,8 +11,8 @@ import {
 import { ProjectService } from "./project.service";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
-import { RolesGuard } from "src/roles/roles.guard";
-import { Roles } from "src/roles/roles.decorator";
+import { RolesGuard } from "../roles/roles.guard";
+import { Roles } from "../roles/roles.decorator";
 
 @Controller("project")
 @UseGuards(RolesGuard)

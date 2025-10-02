@@ -11,12 +11,12 @@ import {
     UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { CreateBoundingBoxDto } from "src/bounding-box/dto/create-bounding-box.dto";
-import { UpdateBoundingBoxDto } from "src/bounding-box/dto/update-bounding-box.dto";
-import { CreateSkeletalDto } from "src/skeletal/dto/create-skeletal.dto";
-import { UpdateSkeletalDto } from "src/skeletal/dto/update-skeletal.dto";
-import { Roles } from "src/roles/roles.decorator";
-import { RolesGuard } from "src/roles/roles.guard";
+import { CreateBoundingBoxDto } from "../bounding-box/dto/create-bounding-box.dto";
+import { UpdateBoundingBoxDto } from "../bounding-box/dto/update-bounding-box.dto";
+import { CreateSkeletalDto } from "../skeletal/dto/create-skeletal.dto";
+import { UpdateSkeletalDto } from "../skeletal/dto/update-skeletal.dto";
+import { Roles } from "../roles/roles.decorator";
+import { RolesGuard } from "../roles/roles.guard";
 import { SlideService } from "./slide.service";
 import { UpdateSlideDto } from "./dto/update-slide.dto";
 

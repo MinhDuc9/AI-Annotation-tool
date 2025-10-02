@@ -3,7 +3,7 @@ import type { Job } from "bullmq";
 import { UnrecoverableError } from "bullmq";
 import { HttpException } from "@nestjs/common";
 import { SkeletalGateway } from "./skeletal.gateway";
-import { parseWsPayload, pickString } from "src/common/ws.utils";
+import { parseWsPayload, pickString } from "../common/ws.utils";
 import { SkeletalService } from "./skeletal.service";
 import { CreateSkeletalDto } from "./dto/create-skeletal.dto";
 import { UpdateSkeletalDto } from "./dto/update-skeletal.dto";

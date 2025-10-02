@@ -9,7 +9,7 @@ import {
 import type { Server, Socket } from "socket.io";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
-import { parseWsPayload, pickString } from "src/common/ws.utils";
+import { parseWsPayload, pickString } from "../common/ws.utils";
 import { CreateBoundingBoxDto } from "./dto/create-bounding-box.dto";
 
 @WebSocketGateway({

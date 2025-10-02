@@ -8,7 +8,7 @@ import {
 import { Server } from "socket.io";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
-import { parseWsPayload, pickString } from "src/common/ws.utils";
+import { parseWsPayload, pickString } from "../common/ws.utils";
 
 @WebSocketGateway({
     cors: {

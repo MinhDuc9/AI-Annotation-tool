@@ -4,9 +4,9 @@ import { UnrecoverableError } from "bullmq";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Comment } from "./entities/comment.entity";
-import { Slide } from "src/slide/entities/slide.entity";
+import { Slide } from "../slide/entities/slide.entity";
 import { CommentGateway } from "./comment.gateway";
-import { parseWsPayload, pickString } from "src/common/ws.utils";
+import { parseWsPayload, pickString } from "../common/ws.utils";
 
 export type CommentJobName = "create" | "update" | "delete";
 

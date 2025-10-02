@@ -3,7 +3,7 @@ import type { Job } from "bullmq";
 import { UnrecoverableError } from "bullmq";
 import { HttpException } from "@nestjs/common";
 import { BoundingBoxGateway } from "./bounding-box.gateway";
-import { parseWsPayload, pickString } from "src/common/ws.utils";
+import { parseWsPayload, pickString } from "../common/ws.utils";
 import { BoundingBoxService } from "./bounding-box.service";
 import { CreateBoundingBoxDto } from "./dto/create-bounding-box.dto";
 import { UpdateBoundingBoxDto } from "./dto/update-bounding-box.dto";

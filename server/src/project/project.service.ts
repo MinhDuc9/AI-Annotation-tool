@@ -11,11 +11,11 @@ import { UpdateProjectDto } from "./dto/update-project.dto";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Project } from "./entities/project.entity";
 import { Repository } from "typeorm";
-import { User } from "src/user/entities/user.entity";
+import { User } from "../user/entities/user.entity";
 import { REQUEST } from "@nestjs/core";
 import { Request } from "express";
 import { JwtPayload } from "../jwt/jwt-payload.interface";
-import { ProjectUserRole } from "src/project-user-role/entities/project-user-role.entity";
+import { ProjectUserRole } from "../project-user-role/entities/project-user-role.entity";
 
 @Injectable({ scope: Scope.REQUEST })
 export class ProjectService {

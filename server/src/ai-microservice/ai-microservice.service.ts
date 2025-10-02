@@ -7,9 +7,9 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { In, Repository } from "typeorm";
-import { Slide } from "src/slide/entities/slide.entity";
-import { BoundingBox } from "src/bounding-box/entities/bounding-box.entity";
-import { Skeletal } from "src/skeletal/entities/skeletal.entity";
+import { Slide } from "../slide/entities/slide.entity";
+import { BoundingBox } from "../bounding-box/entities/bounding-box.entity";
+import { Skeletal } from "../skeletal/entities/skeletal.entity";
 import { ConfigService } from "@nestjs/config";
 
 @Injectable()

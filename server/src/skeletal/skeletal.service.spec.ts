@@ -2,7 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { SkeletalService } from "./skeletal.service";
 import { Skeletal } from "./entities/skeletal.entity";
-import { Slide } from "src/slide/entities/slide.entity";
+import { Slide } from "../slide/entities/slide.entity";
 
 describe("SkeletalService", () => {
     let service: SkeletalService;

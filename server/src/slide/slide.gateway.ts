@@ -12,8 +12,8 @@ import { InjectRepository } from "@nestjs/typeorm";
 import type { Request } from "express";
 import type { Server, Socket } from "socket.io";
 import { Repository } from "typeorm";
-import { parseWsPayload, pickString } from "src/common/ws.utils";
-import { ProjectService } from "src/project/project.service";
+import { parseWsPayload, pickString } from "../common/ws.utils";
+import { ProjectService } from "../project/project.service";
 import { Slide } from "./entities/slide.entity";
 
 @WebSocketGateway({
