@@ -21,11 +21,13 @@
   <div class="avatar-group" role="group" aria-label="Collaborators">
     @for (user of visibleCollaborators(); track user.id) {
       <div class="avatar" matTooltip="{{ user.name }}">
-        <ng-container @if (user.avatarUrl) {
-          <img class="avatar-img" src="{{ user.avatarUrl }}" alt="{{ user.name }}" />
-        } @else {
-          <span class="avatar-initials">{{ initials(user.name) }}</span>
-        }}
+        <ng-container>
+            @if (user.avatarUrl) {
+            <img class="avatar-img" src="{{ user.avatarUrl }}" alt="{{ user.name }}" />
+            } @else {
+            <span class="avatar-initials">{{ initials(user.name) }}</span>
+            }
+        </ng-container>
         <span class="presence" [class.online]="user.online"></span>
       </div>
     }
