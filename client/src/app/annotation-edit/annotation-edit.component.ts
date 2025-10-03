@@ -22,7 +22,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatCardModule } from '@angular/material/card';
 import { MatTabsModule } from '@angular/material/tabs';
-import {MatSlideToggleModule} from '@angular/material/slide-toggle';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { CommentModel, slideCommentDTO, SlideService } from '../services/slide.service';
 import { SocketCommentDTO, SocketCommentDeletedDTO, SocketService } from '../services/socket.service';
 import { AuthService } from '../services/Auth.service';
@@ -34,15 +34,15 @@ export type Id = number;
 export interface LabelDef { id: string; name: string; }
 
 // NEW: label chip models (screen-space)
-  type LabelChip = {
-    id: Id;
-    labelId: string;
-    labelName: string;
-    color: string;   // border color
-    left: number;
-    top: number;
-    maxWidth: number;
-  };
+type LabelChip = {
+  id: Id;
+  labelId: string;
+  labelName: string;
+  color: string;   // border color
+  left: number;
+  top: number;
+  maxWidth: number;
+};
 
 export interface BoxAnn {
   id: Id;
@@ -84,8 +84,8 @@ interface ToolCtx {
   activeLabelId: string;
   activeColor: string;
   requestPaint(): void;
-  screenToImage(clientX: number, clientY: number): {x: number; y: number};
-  clampToImage(p: {x:number; y:number}): {x:number; y:number};
+  screenToImage(clientX: number, clientY: number): { x: number; y: number };
+  clampToImage(p: { x: number; y: number }): { x: number; y: number };
 }
 interface Tool {
   kind: ToolKind;
@@ -130,54 +130,54 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   }
 
   /* ---------- View refs ---------- */
-  @ViewChild('bgCanvas',   { static: true }) bgCanvasRef!: ElementRef<HTMLCanvasElement>;
-  @ViewChild('fgCanvas',   { static: true }) fgCanvasRef!: ElementRef<HTMLCanvasElement>;
-  @ViewChild('viewport',   { static: true }) viewportRef!: ElementRef<HTMLDivElement>;
-  @ViewChild('stage',      { static: false }) stageRef?: ElementRef<HTMLDivElement>;
+  @ViewChild('bgCanvas', { static: true }) bgCanvasRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('fgCanvas', { static: true }) fgCanvasRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('viewport', { static: true }) viewportRef!: ElementRef<HTMLDivElement>;
+  @ViewChild('stage', { static: false }) stageRef?: ElementRef<HTMLDivElement>;
   @ViewChild('labelLayer', { static: true }) labelLayerRef!: ElementRef<HTMLDivElement>;
 
   /* ---------- Stage (desk) pan + zoom (SCREEN space) ---------- */
-  stagePan   = signal<{x:number;y:number}>({ x: 0, y: 0 });
+  stagePan = signal<{ x: number; y: number }>({ x: 0, y: 0 });
   stageScale = signal<number>(1);
 
   private stageDragging = false;
   private stageLast = { x: 0, y: 0 };
   private spaceHeld = false;
-  
+
   isPanMode() { return this.currentTool().kind === 'stagePan' || this.spaceHeld; }
   isPanning() { return this.stageDragging; }
 
   // NEW: label visibility toggles
-  showBoxLabels   = signal<boolean>(true);
+  showBoxLabels = signal<boolean>(true);
   showPointLabels = signal<boolean>(true);
 
 
 
   onStagePointerDown(e: PointerEvent) {
-  // start pan if: middle mouse OR spacebar held OR pan tool is active
-  const panRequested = e.button === 1 || this.spaceHeld || this.currentTool().kind === 'stagePan';
-  if (!panRequested) return;
+    // start pan if: middle mouse OR spacebar held OR pan tool is active
+    const panRequested = e.button === 1 || this.spaceHeld || this.currentTool().kind === 'stagePan';
+    if (!panRequested) return;
 
-  (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-  this.stageDragging = true;
-  this.stageLast = { x: e.clientX, y: e.clientY };
-  e.preventDefault();
-}
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    this.stageDragging = true;
+    this.stageLast = { x: e.clientX, y: e.clientY };
+    e.preventDefault();
+  }
 
-onStagePointerMove(e: PointerEvent) {
-  if (!this.stageDragging) return;
-  const dx = e.clientX - this.stageLast.x;
-  const dy = e.clientY - this.stageLast.y;
-  this.stageLast = { x: e.clientX, y: e.clientY };
-  const p = this.stagePan();
-  this.stagePan.set({ x: p.x + dx, y: p.y + dy });
-  this.updateScreenLabels();
-}
+  onStagePointerMove(e: PointerEvent) {
+    if (!this.stageDragging) return;
+    const dx = e.clientX - this.stageLast.x;
+    const dy = e.clientY - this.stageLast.y;
+    this.stageLast = { x: e.clientX, y: e.clientY };
+    const p = this.stagePan();
+    this.stagePan.set({ x: p.x + dx, y: p.y + dy });
+    this.updateScreenLabels();
+  }
 
-onStagePointerUp(e: PointerEvent) {
-  (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-  this.stageDragging = false;
-}
+  onStagePointerUp(e: PointerEvent) {
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    this.stageDragging = false;
+  }
 
 
   onStageWheel(e: WheelEvent) {
@@ -239,7 +239,7 @@ onStagePointerUp(e: PointerEvent) {
       e.preventDefault();
     }
   };
-  private onKeyUp   = (e: KeyboardEvent) => { if (e.code === 'Space') this.spaceHeld = false; };
+  private onKeyUp = (e: KeyboardEvent) => { if (e.code === 'Space') this.spaceHeld = false; };
 
   private beginStagePan(fromEl: EventTarget, e: PointerEvent) {
     (fromEl as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -257,34 +257,34 @@ onStagePointerUp(e: PointerEvent) {
   /* ---------- Image & canvas ---------- */
   private img = new Image();
   private imgLoaded = signal(false);
-  imageWidth  = signal(0);
+  imageWidth = signal(0);
   imageHeight = signal(0);
 
   canvasSize = signal<{ w: number; h: number }>({ w: 960, h: 600 });
   private ro?: ResizeObserver;
 
   /* ---------- Data ---------- */
-  boxLabels  = signal<LabelDef[]>([
-  { id: 'box-bird', name: 'Bird' },
-  { id: 'box-wing', name: 'Wing' },
-  { id: 'box-head', name: 'Head' },
-]);
+  boxLabels = signal<LabelDef[]>([
+    { id: 'box-bird', name: 'Bird' },
+    { id: 'box-wing', name: 'Wing' },
+    { id: 'box-head', name: 'Head' },
+  ]);
   skelLabels = signal<LabelDef[]>([
-  { id: 'kp-eye',    name: 'Eye' },
-  { id: 'kp-beak',   name: 'Beak' },
-  { id: 'kp-wingtip',name: 'Wing Tip' },
-]);
+    { id: 'kp-eye', name: 'Eye' },
+    { id: 'kp-beak', name: 'Beak' },
+    { id: 'kp-wingtip', name: 'Wing Tip' },
+  ]);
 
-// Active defaults (creation)
-activeLabelId     = signal<string>(this.boxLabels()[0]?.id ?? '');
-activeSkelLabelId = signal<string>(this.skelLabels()[0]?.id ?? '');
+  // Active defaults (creation)
+  activeLabelId = signal<string>(this.boxLabels()[0]?.id ?? '');
+  activeSkelLabelId = signal<string>(this.skelLabels()[0]?.id ?? '');
 
-// Inputs for "Add label" forms
-newBoxLabelName  = signal<string>('');
-newSkelLabelName = signal<string>('');
-  
-  activeColor   = signal<string>('#ff8c00');  // new boxes
-  activeSkelColor   = signal<string>('#00e676');  // default color for NEW skeleton bones
+  // Inputs for "Add label" forms
+  newBoxLabelName = signal<string>('');
+  newSkelLabelName = signal<string>('');
+
+  activeColor = signal<string>('#ff8c00');  // new boxes
+  activeSkelColor = signal<string>('#00e676');  // default color for NEW skeleton bones
 
 
   boxes = signal<BoxAnn[]>([]);
@@ -297,22 +297,22 @@ newSkelLabelName = signal<string>('');
   sidenavOpen = true;
 
   /* ---------- Screen-space label chips for BOXES only ---------- */
-  boxLabelChips   = signal<LabelChip[]>([]);
+  boxLabelChips = signal<LabelChip[]>([]);
   pointLabelChips = signal<LabelChip[]>([]);
 
   /* ---------- Tools ---------- */
-  private boxTool: Tool        = this.makeBoxTool();
-  private selectToolObj: Tool  = this.makeSelectTool();     // now supports skeleton + point select/move/delete
-  private skeletonTool: Tool   = this.makeSkeletonTool();   // custom behavior per spec
-  private stagePanTool: Tool   = this.makeStagePanTool();
+  private boxTool: Tool = this.makeBoxTool();
+  private selectToolObj: Tool = this.makeSelectTool();     // now supports skeleton + point select/move/delete
+  private skeletonTool: Tool = this.makeSkeletonTool();   // custom behavior per spec
+  private stagePanTool: Tool = this.makeStagePanTool();
 
   currentTool = signal<Tool>(this.selectToolObj);
   selectTool(kind: ToolKind) {
     this.currentTool.set(
-      kind === 'box'       ? this.boxTool :
-      kind === 'skeleton'  ? this.skeletonTool :
-      kind === 'stagePan'  ? this.stagePanTool :
-                             this.selectToolObj
+      kind === 'box' ? this.boxTool :
+        kind === 'skeleton' ? this.skeletonTool :
+          kind === 'stagePan' ? this.stagePanTool :
+            this.selectToolObj
     );
     this.requestPaint();
   }
@@ -339,13 +339,13 @@ newSkelLabelName = signal<string>('');
     this.ro.observe(this.viewportRef.nativeElement);
 
     effect(() => {
-  void this.boxes(); void this.skeletons();
-  void this.canvasSize(); void this.imgLoaded();
-  void this.stagePan(); void this.stageScale();
-  void this.showBoxLabels(); void this.showPointLabels(); // NEW
-  this.requestPaint();
-  this.updateScreenLabels();
-}, { allowSignalWrites: true, injector: this.injector });
+      void this.boxes(); void this.skeletons();
+      void this.canvasSize(); void this.imgLoaded();
+      void this.stagePan(); void this.stageScale();
+      void this.showBoxLabels(); void this.showPointLabels(); // NEW
+      this.requestPaint();
+      this.updateScreenLabels();
+    }, { allowSignalWrites: true, injector: this.injector });
 
 
     this.img.addEventListener('load', () => {
@@ -359,13 +359,13 @@ newSkelLabelName = signal<string>('');
     });
 
     window.addEventListener('keydown', this.onKeyDown, { passive: false });
-    window.addEventListener('keyup',   this.onKeyUp,   { passive: true  });
+    window.addEventListener('keyup', this.onKeyUp, { passive: true });
   }
 
   ngOnDestroy() {
     this.ro?.disconnect();
     window.removeEventListener('keydown', this.onKeyDown);
-    window.removeEventListener('keyup',   this.onKeyUp);
+    window.removeEventListener('keyup', this.onKeyUp);
   }
 
   /* ---------- UI actions ---------- */
@@ -383,23 +383,23 @@ newSkelLabelName = signal<string>('');
   }
 
   onExport() {
-  const payload = {
-    image: { width: this.imageWidth(), height: this.imageHeight(), file: this.img.src },
-    boxLabels: this.boxLabels(),      // <- boxes' label set
-    skelLabels: this.skelLabels(),    // <- keypoints' label set
-    boxes: this.boxes(),
-    skeletons: this.skeletons(),
-  };
+    const payload = {
+      image: { width: this.imageWidth(), height: this.imageHeight(), file: this.img.src },
+      boxLabels: this.boxLabels(),      // <- boxes' label set
+      skelLabels: this.skelLabels(),    // <- keypoints' label set
+      boxes: this.boxes(),
+      skeletons: this.skeletons(),
+    };
 
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.download = 'annotations.json';
-  a.href = url;
-  a.click();
-  URL.revokeObjectURL(url);
-  this.snack.open('Exported annotations.json', undefined, { duration: 1600 });
-}
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.download = 'annotations.json';
+    a.href = url;
+    a.click();
+    URL.revokeObjectURL(url);
+    this.snack.open('Exported annotations.json', undefined, { duration: 1600 });
+  }
 
 
   onActiveColorInput(e: Event) {
@@ -436,7 +436,7 @@ newSkelLabelName = signal<string>('');
 
   /* ---------- Sidebar bindings for BOX ---------- */
   selectedBoxLabelId() { return this.selectedBox()?.labelId ?? this.activeLabelId(); }
-  selectedBoxColor()   { return this.selectedBox()?.color   ?? this.activeColor(); }
+  selectedBoxColor() { return this.selectedBox()?.color ?? this.activeColor(); }
 
   onSelectedLabelChange(newId: string) {
     const s = this.selection();
@@ -470,202 +470,202 @@ newSkelLabelName = signal<string>('');
   }
 
   onActiveBoxColorInput(e: Event) {
-  this.activeColor.set((e.target as HTMLInputElement)?.value ?? this.activeColor());
-}
-onActiveBoxLabelChange(newId: string) { this.activeLabelId.set(newId); }
+    this.activeColor.set((e.target as HTMLInputElement)?.value ?? this.activeColor());
+  }
+  onActiveBoxLabelChange(newId: string) { this.activeLabelId.set(newId); }
 
-onActiveSkelColorInput(e: Event) {
-  this.activeSkelColor.set((e.target as HTMLInputElement)?.value ?? this.activeSkelColor());
-}
-onActiveSkelLabelChange(newId: string) { this.activeSkelLabelId.set(newId); }
+  onActiveSkelColorInput(e: Event) {
+    this.activeSkelColor.set((e.target as HTMLInputElement)?.value ?? this.activeSkelColor());
+  }
+  onActiveSkelLabelChange(newId: string) { this.activeSkelLabelId.set(newId); }
 
-private slugify(name: string) {
-  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-}
-private ensureUniqueId(base: string, taken: Set<string>) {
-  let id = base, i = 2;
-  while (taken.has(id)) id = `${base}-${i++}`;
-  return id;
-}
-boxLabelName = (id: string) => this.boxLabels().find(l => l.id === id)?.name ?? id;
-skelLabelName = (id: string) => this.skelLabels().find(l => l.id === id)?.name ?? id;
+  private slugify(name: string) {
+    return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  }
+  private ensureUniqueId(base: string, taken: Set<string>) {
+    let id = base, i = 2;
+    while (taken.has(id)) id = `${base}-${i++}`;
+    return id;
+  }
+  boxLabelName = (id: string) => this.boxLabels().find(l => l.id === id)?.name ?? id;
+  skelLabelName = (id: string) => this.skelLabels().find(l => l.id === id)?.name ?? id;
 
-isBoxLabelUsed(id: string): boolean {
-  return this.boxes().some(b => b.labelId === id);
-}
-isSkelLabelUsed(id: string): boolean {
-  return this.skeletons().some(sk => Object.values(sk.points).some(kp => kp.labelId === id));
-}
-
-boxLabelNameById(id: string | null | undefined): string {
-  if (!id) return '-';
-  return this.boxLabels().find(l => l.id === id)?.name ?? '-';
-}
-skelLabelNameById(id: string | null | undefined): string {
-  if (!id) return '-';
-  return this.skelLabels().find(l => l.id === id)?.name ?? '-';
-}
-
-// which option row is currently hovered (any dropdown)
-hoveredLabelId = signal<string | null>(null);
-
-// convenience for showing the check
-isSelectedOption(id: string, currentId: string | null | undefined): boolean {
-  return !!currentId && id === currentId;
-}
-
-
-addBoxLabel() {
-  const name = this.newBoxLabelName().trim();
-  if (!name) return;
-  const taken = new Set(this.boxLabels().map(l => l.id));
-  const base = `box-${this.slugify(name) || 'label'}`;
-  const id = this.ensureUniqueId(base, taken);
-
-  // prevent duplicate names (case-insensitive)
-  if (this.boxLabels().some(l => l.name.toLowerCase() === name.toLowerCase())) {
-    this.snack.open('A box label with that name already exists.', undefined, { duration: 1500 });
-    return;
+  isBoxLabelUsed(id: string): boolean {
+    return this.boxes().some(b => b.labelId === id);
+  }
+  isSkelLabelUsed(id: string): boolean {
+    return this.skeletons().some(sk => Object.values(sk.points).some(kp => kp.labelId === id));
   }
 
-  this.boxLabels.update(arr => [...arr, { id, name }]);
-  // if no active or the user just added the first, set active
-  if (!this.activeLabelId() || this.boxLabels().length === 1) this.activeLabelId.set(id);
-  this.newBoxLabelName.set('');
-}
-
-addSkelLabel() {
-  const name = this.newSkelLabelName().trim();
-  if (!name) return;
-  const taken = new Set(this.skelLabels().map(l => l.id));
-  const base = `kp-${this.slugify(name) || 'label'}`;
-  const id = this.ensureUniqueId(base, taken);
-
-  if (this.skelLabels().some(l => l.name.toLowerCase() === name.toLowerCase())) {
-    this.snack.open('A keypoint label with that name already exists.', undefined, { duration: 1500 });
-    return;
+  boxLabelNameById(id: string | null | undefined): string {
+    if (!id) return '-';
+    return this.boxLabels().find(l => l.id === id)?.name ?? '-';
+  }
+  skelLabelNameById(id: string | null | undefined): string {
+    if (!id) return '-';
+    return this.skelLabels().find(l => l.id === id)?.name ?? '-';
   }
 
-  this.skelLabels.update(arr => [...arr, { id, name }]);
-  if (!this.activeSkelLabelId() || this.skelLabels().length === 1) this.activeSkelLabelId.set(id);
-  this.newSkelLabelName.set('');
-}
+  // which option row is currently hovered (any dropdown)
+  hoveredLabelId = signal<string | null>(null);
 
-// --- Add: compact add/delete handlers (BOX) ---
-addBoxLabelPrompt() {
-  const name = (window.prompt('New box label name?') || '').trim();
-  if (!name) return;
-
-  // case-insensitive duplicate name check
-  if (this.boxLabels().some(l => l.name.toLowerCase() === name.toLowerCase())) {
-    this.snack.open('A box label with that name already exists.', undefined, { duration: 1600 });
-    return;
+  // convenience for showing the check
+  isSelectedOption(id: string, currentId: string | null | undefined): boolean {
+    return !!currentId && id === currentId;
   }
 
-  const taken = new Set(this.boxLabels().map(l => l.id));
-  const base  = `box-${this.slugify(name) || 'label'}`;
-  const id    = this.ensureUniqueId(base, taken);
 
-  this.boxLabels.update(arr => [...arr, { id, name }]);
-  if (!this.activeLabelId()) this.activeLabelId.set(id);
-}
+  addBoxLabel() {
+    const name = this.newBoxLabelName().trim();
+    if (!name) return;
+    const taken = new Set(this.boxLabels().map(l => l.id));
+    const base = `box-${this.slugify(name) || 'label'}`;
+    const id = this.ensureUniqueId(base, taken);
 
-// --- Add: compact add/delete handlers (SKELETON KEYPOINT) ---
-addSkelLabelPrompt() {
-  const name = (window.prompt('New keypoint label name?') || '').trim();
-  if (!name) return;
+    // prevent duplicate names (case-insensitive)
+    if (this.boxLabels().some(l => l.name.toLowerCase() === name.toLowerCase())) {
+      this.snack.open('A box label with that name already exists.', undefined, { duration: 1500 });
+      return;
+    }
 
-  if (this.skelLabels().some(l => l.name.toLowerCase() === name.toLowerCase())) {
-    this.snack.open('A keypoint label with that name already exists.', undefined, { duration: 1600 });
-    return;
+    this.boxLabels.update(arr => [...arr, { id, name }]);
+    // if no active or the user just added the first, set active
+    if (!this.activeLabelId() || this.boxLabels().length === 1) this.activeLabelId.set(id);
+    this.newBoxLabelName.set('');
   }
 
-  const taken = new Set(this.skelLabels().map(l => l.id));
-  const base  = `kp-${this.slugify(name) || 'label'}`;
-  const id    = this.ensureUniqueId(base, taken);
+  addSkelLabel() {
+    const name = this.newSkelLabelName().trim();
+    if (!name) return;
+    const taken = new Set(this.skelLabels().map(l => l.id));
+    const base = `kp-${this.slugify(name) || 'label'}`;
+    const id = this.ensureUniqueId(base, taken);
 
-  this.skelLabels.update(arr => [...arr, { id, name }]);
-  if (!this.activeSkelLabelId()) this.activeSkelLabelId.set(id);
-}
+    if (this.skelLabels().some(l => l.name.toLowerCase() === name.toLowerCase())) {
+      this.snack.open('A keypoint label with that name already exists.', undefined, { duration: 1500 });
+      return;
+    }
 
-// BOX
-deleteBoxLabelCompact(id: string) {
-  // block if this is the last label
-  if (this.boxLabels().length <= 1) {
-    this.snack.open('You must keep at least one box label.', undefined, { duration: 1800 });
-    return;
+    this.skelLabels.update(arr => [...arr, { id, name }]);
+    if (!this.activeSkelLabelId() || this.skelLabels().length === 1) this.activeSkelLabelId.set(id);
+    this.newSkelLabelName.set('');
   }
-  // block if label is in use
-  if (this.isBoxLabelUsed(id)) {
-    this.snack.open('Cannot delete: label is used by a box annotation.', undefined, { duration: 1800 });
-    return;
-  }
-  const next = this.boxLabels().filter(l => l.id !== id);
-  this.boxLabels.set(next);
-  if (this.activeLabelId() === id) this.activeLabelId.set(next[0]?.id ?? '');
-}
 
-// If you still call these "full" versions anywhere, patch them too:
-deleteBoxLabel(id: string) {
-  if (this.boxLabels().length <= 1) {
-    this.snack.open('You must keep at least one box label.', undefined, { duration: 1800 });
-    return;
-  }
-  if (this.isBoxLabelUsed(id)) {
-    this.snack.open('Cannot delete: label is used by a box annotation.', undefined, { duration: 1800 });
-    return;
-  }
-  this.boxLabels.update(arr => arr.filter(l => l.id !== id));
-  if (this.activeLabelId() === id) this.activeLabelId.set(this.boxLabels()[0]?.id ?? '');
-}
+  // --- Add: compact add/delete handlers (BOX) ---
+  addBoxLabelPrompt() {
+    const name = (window.prompt('New box label name?') || '').trim();
+    if (!name) return;
 
-// SKELETON
-deleteSkelLabelCompact(id: string) {
-  if (this.skelLabels().length <= 1) {
-    this.snack.open('You must keep at least one keypoint label.', undefined, { duration: 1800 });
-    return;
-  }
-  if (this.isSkelLabelUsed(id)) {
-    this.snack.open('Cannot delete: label is used by a keypoint.', undefined, { duration: 1800 });
-    return;
-  }
-  const next = this.skelLabels().filter(l => l.id !== id);
-  this.skelLabels.set(next);
-  if (this.activeSkelLabelId() === id) this.activeSkelLabelId.set(next[0]?.id ?? '');
-}
+    // case-insensitive duplicate name check
+    if (this.boxLabels().some(l => l.name.toLowerCase() === name.toLowerCase())) {
+      this.snack.open('A box label with that name already exists.', undefined, { duration: 1600 });
+      return;
+    }
 
-deleteSkelLabel(id: string) {
-  if (this.skelLabels().length <= 1) {
-    this.snack.open('You must keep at least one keypoint label.', undefined, { duration: 1800 });
-    return;
-  }
-  if (this.isSkelLabelUsed(id)) {
-    this.snack.open('Cannot delete: label is used by a keypoint.', undefined, { duration: 1800 });
-    return;
-  }
-  this.skelLabels.update(arr => arr.filter(l => l.id !== id));
-  if (this.activeSkelLabelId() === id) this.activeSkelLabelId.set(this.skelLabels()[0]?.id ?? '');
-}
+    const taken = new Set(this.boxLabels().map(l => l.id));
+    const base = `box-${this.slugify(name) || 'label'}`;
+    const id = this.ensureUniqueId(base, taken);
 
-// BOX
-canDeleteBoxLabel(id: string): boolean {
-  return this.boxLabels().length > 1 && !this.isBoxLabelUsed(id);
-}
-boxLabelTooltip(id: string): string {
-  if (this.boxLabels().length <= 1) return 'At least one label is required';
-  if (this.isBoxLabelUsed(id)) return 'In use - cannot delete';
-  return 'Delete label';
-}
+    this.boxLabels.update(arr => [...arr, { id, name }]);
+    if (!this.activeLabelId()) this.activeLabelId.set(id);
+  }
 
-// SKELETON
-canDeleteSkelLabel(id: string): boolean {
-  return this.skelLabels().length > 1 && !this.isSkelLabelUsed(id);
-}
-skelLabelTooltip(id: string): string {
-  if (this.skelLabels().length <= 1) return 'At least one label is required';
-  if (this.isSkelLabelUsed(id)) return 'In use - cannot delete';
-  return 'Delete label';
-}
+  // --- Add: compact add/delete handlers (SKELETON KEYPOINT) ---
+  addSkelLabelPrompt() {
+    const name = (window.prompt('New keypoint label name?') || '').trim();
+    if (!name) return;
+
+    if (this.skelLabels().some(l => l.name.toLowerCase() === name.toLowerCase())) {
+      this.snack.open('A keypoint label with that name already exists.', undefined, { duration: 1600 });
+      return;
+    }
+
+    const taken = new Set(this.skelLabels().map(l => l.id));
+    const base = `kp-${this.slugify(name) || 'label'}`;
+    const id = this.ensureUniqueId(base, taken);
+
+    this.skelLabels.update(arr => [...arr, { id, name }]);
+    if (!this.activeSkelLabelId()) this.activeSkelLabelId.set(id);
+  }
+
+  // BOX
+  deleteBoxLabelCompact(id: string) {
+    // block if this is the last label
+    if (this.boxLabels().length <= 1) {
+      this.snack.open('You must keep at least one box label.', undefined, { duration: 1800 });
+      return;
+    }
+    // block if label is in use
+    if (this.isBoxLabelUsed(id)) {
+      this.snack.open('Cannot delete: label is used by a box annotation.', undefined, { duration: 1800 });
+      return;
+    }
+    const next = this.boxLabels().filter(l => l.id !== id);
+    this.boxLabels.set(next);
+    if (this.activeLabelId() === id) this.activeLabelId.set(next[0]?.id ?? '');
+  }
+
+  // If you still call these "full" versions anywhere, patch them too:
+  deleteBoxLabel(id: string) {
+    if (this.boxLabels().length <= 1) {
+      this.snack.open('You must keep at least one box label.', undefined, { duration: 1800 });
+      return;
+    }
+    if (this.isBoxLabelUsed(id)) {
+      this.snack.open('Cannot delete: label is used by a box annotation.', undefined, { duration: 1800 });
+      return;
+    }
+    this.boxLabels.update(arr => arr.filter(l => l.id !== id));
+    if (this.activeLabelId() === id) this.activeLabelId.set(this.boxLabels()[0]?.id ?? '');
+  }
+
+  // SKELETON
+  deleteSkelLabelCompact(id: string) {
+    if (this.skelLabels().length <= 1) {
+      this.snack.open('You must keep at least one keypoint label.', undefined, { duration: 1800 });
+      return;
+    }
+    if (this.isSkelLabelUsed(id)) {
+      this.snack.open('Cannot delete: label is used by a keypoint.', undefined, { duration: 1800 });
+      return;
+    }
+    const next = this.skelLabels().filter(l => l.id !== id);
+    this.skelLabels.set(next);
+    if (this.activeSkelLabelId() === id) this.activeSkelLabelId.set(next[0]?.id ?? '');
+  }
+
+  deleteSkelLabel(id: string) {
+    if (this.skelLabels().length <= 1) {
+      this.snack.open('You must keep at least one keypoint label.', undefined, { duration: 1800 });
+      return;
+    }
+    if (this.isSkelLabelUsed(id)) {
+      this.snack.open('Cannot delete: label is used by a keypoint.', undefined, { duration: 1800 });
+      return;
+    }
+    this.skelLabels.update(arr => arr.filter(l => l.id !== id));
+    if (this.activeSkelLabelId() === id) this.activeSkelLabelId.set(this.skelLabels()[0]?.id ?? '');
+  }
+
+  // BOX
+  canDeleteBoxLabel(id: string): boolean {
+    return this.boxLabels().length > 1 && !this.isBoxLabelUsed(id);
+  }
+  boxLabelTooltip(id: string): string {
+    if (this.boxLabels().length <= 1) return 'At least one label is required';
+    if (this.isBoxLabelUsed(id)) return 'In use - cannot delete';
+    return 'Delete label';
+  }
+
+  // SKELETON
+  canDeleteSkelLabel(id: string): boolean {
+    return this.skelLabels().length > 1 && !this.isSkelLabelUsed(id);
+  }
+  skelLabelTooltip(id: string): string {
+    if (this.skelLabels().length <= 1) return 'At least one label is required';
+    if (this.isSkelLabelUsed(id)) return 'In use - cannot delete';
+    return 'Delete label';
+  }
 
 
   pointLabelId(): string {
@@ -702,9 +702,9 @@ skelLabelTooltip(id: string): string {
     const el = (e.currentTarget as HTMLElement);
 
     // If pan tool is active (or middle/space), let the stage handler do it
-  if (this.currentTool().kind === 'stagePan' || e.button === 1 || this.spaceHeld) {
-    // Do nothing here; onStagePointerDown handles the drag
-    return;;
+    if (this.currentTool().kind === 'stagePan' || e.button === 1 || this.spaceHeld) {
+      // Do nothing here; onStagePointerDown handles the drag
+      return;;
     }
     if (this.currentTool().kind === 'stagePan') {
       this.beginStagePan(el, e);
@@ -729,7 +729,7 @@ skelLabelTooltip(id: string): string {
     el.releasePointerCapture?.(e.pointerId);
     this.currentTool().onUp(e, this.toolCtx());
   }
-  onPointerCancel(_: PointerEvent) {}
+  onPointerCancel(_: PointerEvent) { }
 
   /* ---------- Fit desk ---------- */
   private getStagePadding(stageEl: HTMLElement) {
@@ -748,8 +748,8 @@ skelLabelTooltip(id: string): string {
     const rect = stageEl.getBoundingClientRect();
     const { pTop, pRight, pBottom, pLeft } = this.getStagePadding(stageEl);
 
-    const innerW = Math.max(0, rect.width  - pLeft - pRight);
-    const innerH = Math.max(0, rect.height - pTop  - pBottom);
+    const innerW = Math.max(0, rect.width - pLeft - pRight);
+    const innerH = Math.max(0, rect.height - pTop - pBottom);
     const cw = this.canvasSize().w, ch = this.canvasSize().h;
     if (!cw || !ch || !innerW || !innerH) return;
 
@@ -757,7 +757,7 @@ skelLabelTooltip(id: string): string {
     this.stageScale.set(s);
 
     const panX = pLeft + (innerW - cw * s) / 2;
-    const panY = pTop  + (innerH - ch * s) / 2;
+    const panY = pTop + (innerH - ch * s) / 2;
     this.stagePan.set({ x: panX, y: panY });
   }
 
@@ -783,38 +783,38 @@ skelLabelTooltip(id: string): string {
     const bg = this.bgCanvasRef.nativeElement;
     const fg = this.fgCanvasRef.nativeElement;
     const gBg = bg.getContext('2d')!;
-    const g   = fg.getContext('2d')!;
+    const g = fg.getContext('2d')!;
 
     // Ensure crisp pixels
     this.ensureDevicePixels(bg);
     this.ensureDevicePixels(fg);
 
     // BACKGROUND image
-    gBg.setTransform(1,0,0,1,0,0);
-    gBg.clearRect(0,0,bg.width,bg.height);
+    gBg.setTransform(1, 0, 0, 1, 0, 0);
+    gBg.clearRect(0, 0, bg.width, bg.height);
     if (this.imgLoaded()) {
       gBg.imageSmoothingEnabled = true;
       gBg.drawImage(this.img, 0, 0, bg.width, bg.height);
     } else {
       const size = 16;
-      for (let y=0; y<bg.height; y+=size) for (let x=0; x<bg.width; x+=size) {
-        gBg.fillStyle = ((x/size + y/size) % 2 === 0) ? '#111' : '#161616';
-        gBg.fillRect(x,y,size,size);
+      for (let y = 0; y < bg.height; y += size) for (let x = 0; x < bg.width; x += size) {
+        gBg.fillStyle = ((x / size + y / size) % 2 === 0) ? '#111' : '#161616';
+        gBg.fillRect(x, y, size, size);
       }
     }
 
     // OVERLAY in image space
-    g.setTransform(1,0,0,1,0,0);
-    g.clearRect(0,0,fg.width,fg.height);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, fg.width, fg.height);
 
     const iw = Math.max(1, this.imageWidth());
     const ih = Math.max(1, this.imageHeight());
-    const sx = fg.width  / iw;
+    const sx = fg.width / iw;
     const sy = fg.height / ih;
 
     // Stable stroke & handle size (~2px stroke, ~6px handles on screen)
     const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const s   = this.stageScale();
+    const s = this.stageScale();
     const cssStroke = 2, cssHandle = 6;
     const lw = Math.max(1, Math.round(cssStroke * dpr / Math.max(0.5, s)));
     const handleR = Math.max(3, Math.round(cssHandle * dpr / Math.max(0.5, s)));
@@ -906,113 +906,113 @@ skelLabelTooltip(id: string): string {
     const sy = ih / Math.max(1, rect.height);
     return { x: lx * sx, y: ly * sy };
   }
-  private clampToImage(p: {x:number; y:number}) {
+  private clampToImage(p: { x: number; y: number }) {
     const iw = this.imageWidth(), ih = this.imageHeight();
     return { x: Math.min(Math.max(0, p.x), Math.max(0, iw)), y: Math.min(Math.max(0, p.y), Math.max(0, ih)) };
   }
 
   private updateScreenLabels() {
-  const stageEl = this.stageRef?.nativeElement ?? this.viewportRef.nativeElement.closest('.stage') as HTMLElement;
-  if (!stageEl || !this.imgLoaded()) { this.boxLabelChips.set([]); this.pointLabelChips.set([]); return; }
+    const stageEl = this.stageRef?.nativeElement ?? this.viewportRef.nativeElement.closest('.stage') as HTMLElement;
+    if (!stageEl || !this.imgLoaded()) { this.boxLabelChips.set([]); this.pointLabelChips.set([]); return; }
 
-  const stageRect  = stageEl.getBoundingClientRect();
-  const canvasRect = this.fgCanvasRef.nativeElement.getBoundingClientRect();
-  const layerRect  = this.labelLayerRef.nativeElement.getBoundingClientRect();
-  const iw = this.imageWidth(), ih = this.imageHeight();
-  const sx = canvasRect.width  / Math.max(1, iw);
-  const sy = canvasRect.height / Math.max(1, ih);
+    const stageRect = stageEl.getBoundingClientRect();
+    const canvasRect = this.fgCanvasRef.nativeElement.getBoundingClientRect();
+    const layerRect = this.labelLayerRef.nativeElement.getBoundingClientRect();
+    const iw = this.imageWidth(), ih = this.imageHeight();
+    const sx = canvasRect.width / Math.max(1, iw);
+    const sy = canvasRect.height / Math.max(1, ih);
 
-  const chipH = 20;
-  const chipW = 200;
-  const margin = 6;
+    const chipH = 20;
+    const chipW = 200;
+    const margin = 6;
 
-  /* ---- BOX LABELS ---- */
-  const boxesOut: LabelChip[] = this.showBoxLabels() ? this.boxes().map(b => {
-    const bx = canvasRect.left + b.x * sx;
-    const by = canvasRect.top  + b.y * sy;
-    const bw = b.w * sx, bh = b.h * sy;
+    /* ---- BOX LABELS ---- */
+    const boxesOut: LabelChip[] = this.showBoxLabels() ? this.boxes().map(b => {
+      const bx = canvasRect.left + b.x * sx;
+      const by = canvasRect.top + b.y * sy;
+      const bw = b.w * sx, bh = b.h * sy;
 
-    let L = bx, T = by - chipH - margin;              // above top-left
-    if (T < stageRect.top + 4) T = by + bh + margin;  // flip below
-    if (L < stageRect.left + 4) L = stageRect.left + 4;
-    const maxLeft = stageRect.right - 4 - chipW;
-    if (L > maxLeft) L = maxLeft;
+      let L = bx, T = by - chipH - margin;              // above top-left
+      if (T < stageRect.top + 4) T = by + bh + margin;  // flip below
+      if (L < stageRect.left + 4) L = stageRect.left + 4;
+      const maxLeft = stageRect.right - 4 - chipW;
+      if (L > maxLeft) L = maxLeft;
 
-    const left = L - layerRect.left, top = T - layerRect.top;
+      const left = L - layerRect.left, top = T - layerRect.top;
 
-    return {
-      id: b.id,
-      labelId: b.labelId,
-      labelName: this.boxLabelName(b.labelId),
-      color: b.color,
-      left, top, maxWidth: chipW
-    } as LabelChip;
-  }) : [];
+      return {
+        id: b.id,
+        labelId: b.labelId,
+        labelName: this.boxLabelName(b.labelId),
+        color: b.color,
+        left, top, maxWidth: chipW
+      } as LabelChip;
+    }) : [];
 
-  /* ---- POINT LABELS ---- */
-  const ptsOut: LabelChip[] = [];
-  if (this.showPointLabels()) {
-    for (const sk of this.skeletons()) {
-      for (const kp of Object.values(sk.points)) {
-        const px = canvasRect.left + kp.x * sx;
-        const py = canvasRect.top  + kp.y * sy;
+    /* ---- POINT LABELS ---- */
+    const ptsOut: LabelChip[] = [];
+    if (this.showPointLabels()) {
+      for (const sk of this.skeletons()) {
+        for (const kp of Object.values(sk.points)) {
+          const px = canvasRect.left + kp.x * sx;
+          const py = canvasRect.top + kp.y * sy;
 
-        let L = px - 4, T = py - chipH - margin;         // above point, slight left
-        if (T < stageRect.top + 4) T = py + margin + 8;  // flip below if clipped
-        if (L < stageRect.left + 4) L = stageRect.left + 4;
-        const maxLeft = stageRect.right - 4 - chipW;
-        if (L > maxLeft) L = maxLeft;
+          let L = px - 4, T = py - chipH - margin;         // above point, slight left
+          if (T < stageRect.top + 4) T = py + margin + 8;  // flip below if clipped
+          if (L < stageRect.left + 4) L = stageRect.left + 4;
+          const maxLeft = stageRect.right - 4 - chipW;
+          if (L > maxLeft) L = maxLeft;
 
-        const left = L - layerRect.left, top = T - layerRect.top;
+          const left = L - layerRect.left, top = T - layerRect.top;
 
-        // border uses skeleton color; swatch uses the point label's color
-        ptsOut.push({
-          id: sk.id, // use skeleton id for grouping; still unique with position
-          labelId: kp.labelId,
-          labelName: this.skelLabelName(kp.labelId),
-          color: sk.color,
-          left, top, maxWidth: chipW
-        });
+          // border uses skeleton color; swatch uses the point label's color
+          ptsOut.push({
+            id: sk.id, // use skeleton id for grouping; still unique with position
+            labelId: kp.labelId,
+            labelName: this.skelLabelName(kp.labelId),
+            color: sk.color,
+            left, top, maxWidth: chipW
+          });
+        }
       }
     }
-  }
 
-  this.boxLabelChips.set(boxesOut);
-  this.pointLabelChips.set(ptsOut);
-}
+    this.boxLabelChips.set(boxesOut);
+    this.pointLabelChips.set(ptsOut);
+  }
 
 
   /* ---------- Box math ---------- */
   private getBoxCornerCanvasPoints(b: BoxAnn, sx: number, sy: number) {
     return [
-      { x: (b.x)      * sx, y: (b.y)      * sy, key: 'nw' },
-      { x: (b.x+b.w)  * sx, y: (b.y)      * sy, key: 'ne' },
-      { x: (b.x)      * sx, y: (b.y+b.h)  * sy, key: 'sw' },
-      { x: (b.x+b.w)  * sx, y: (b.y+b.h)  * sy, key: 'se' },
+      { x: (b.x) * sx, y: (b.y) * sy, key: 'nw' },
+      { x: (b.x + b.w) * sx, y: (b.y) * sy, key: 'ne' },
+      { x: (b.x) * sx, y: (b.y + b.h) * sy, key: 'sw' },
+      { x: (b.x + b.w) * sx, y: (b.y + b.h) * sy, key: 'se' },
     ] as const;
   }
   private hitTestBorder(box: BoxAnn, clientX: number, clientY: number, tolPx = 6): boolean {
     const rect = this.viewportRect();
-    const sx = rect.width  / Math.max(1, this.imageWidth());
+    const sx = rect.width / Math.max(1, this.imageWidth());
     const sy = rect.height / Math.max(1, this.imageHeight());
     const x = box.x * sx, y = box.y * sy, w = box.w * sx, h = box.h * sy;
 
     const cx = clientX - rect.left, cy = clientY - rect.top;
-    const onLeft   = Math.abs(cx - x) <= tolPx && cy >= y - tolPx && cy <= y + h + tolPx;
-    const onRight  = Math.abs(cx - (x + w)) <= tolPx && cy >= y - tolPx && cy <= y + h + tolPx;
-    const onTop    = Math.abs(cy - y) <= tolPx && cx >= x - tolPx && cx <= x + w + tolPx;
+    const onLeft = Math.abs(cx - x) <= tolPx && cy >= y - tolPx && cy <= y + h + tolPx;
+    const onRight = Math.abs(cx - (x + w)) <= tolPx && cy >= y - tolPx && cy <= y + h + tolPx;
+    const onTop = Math.abs(cy - y) <= tolPx && cx >= x - tolPx && cx <= x + w + tolPx;
     const onBottom = Math.abs(cy - (y + h)) <= tolPx && cx >= x - tolPx && cx <= x + w + tolPx;
     return onLeft || onRight || onTop || onBottom;
   }
-  private hitTestCorner(box: BoxAnn, clientX: number, clientY: number, radiusPx = 8): 'nw'|'ne'|'sw'|'se'|null {
+  private hitTestCorner(box: BoxAnn, clientX: number, clientY: number, radiusPx = 8): 'nw' | 'ne' | 'sw' | 'se' | null {
     const rect = this.viewportRect();
-    const sx = rect.width  / Math.max(1, this.imageWidth());
+    const sx = rect.width / Math.max(1, this.imageWidth());
     const sy = rect.height / Math.max(1, this.imageHeight());
     const corners = this.getBoxCornerCanvasPoints(box, sx, sy);
     const cx = clientX - rect.left, cy = clientY - rect.top;
     for (const c of corners) {
       const dx = cx - c.x, dy = cy - c.y;
-      if (dx*dx + dy*dy <= radiusPx*radiusPx) return c.key;
+      if (dx * dx + dy * dy <= radiusPx * radiusPx) return c.key;
     }
     return null;
   }
@@ -1031,7 +1031,7 @@ skelLabelTooltip(id: string): string {
 
   private hitTestPoint(clientX: number, clientY: number): { skId: Id; pid: string } | null {
     const rect = this.viewportRect();
-    const sx = rect.width  / Math.max(1, this.imageWidth());
+    const sx = rect.width / Math.max(1, this.imageWidth());
     const sy = rect.height / Math.max(1, this.imageHeight());
     const cx = clientX - rect.left, cy = clientY - rect.top;
 
@@ -1039,7 +1039,7 @@ skelLabelTooltip(id: string): string {
     this.forEachSkeletonPoint((sk, pid, kp) => {
       const px = kp.x * sx, py = kp.y * sy;
       const dx = cx - px, dy = cy - py;
-      if (dx*dx + dy*dy <= this.hitRadiusPx*this.hitRadiusPx) {
+      if (dx * dx + dy * dy <= this.hitRadiusPx * this.hitRadiusPx) {
         found = { skId: sk.id, pid };
       }
     });
@@ -1050,17 +1050,17 @@ skelLabelTooltip(id: string): string {
     // distance from point to segment in screen px
     const px = clientX, py = clientY;
     const dx = bx - ax, dy = by - ay;
-    const len2 = dx*dx + dy*dy;
+    const len2 = dx * dx + dy * dy;
     if (len2 === 0) return Math.hypot(px - ax, py - ay) <= tol;
-    let t = ((px - ax)*dx + (py - ay)*dy) / len2;
+    let t = ((px - ax) * dx + (py - ay) * dy) / len2;
     t = Math.max(0, Math.min(1, t));
-    const mx = ax + t*dx, my = ay + t*dy;
+    const mx = ax + t * dx, my = ay + t * dy;
     return Math.hypot(px - mx, py - my) <= tol;
   }
 
   private hitTestBone(clientX: number, clientY: number): { skId: Id } | null {
     const rect = this.viewportRect();
-    const sx = rect.width  / Math.max(1, this.imageWidth());
+    const sx = rect.width / Math.max(1, this.imageWidth());
     const sy = rect.height / Math.max(1, this.imageHeight());
     const cx = clientX - rect.left, cy = clientY - rect.top;
 
@@ -1081,7 +1081,7 @@ skelLabelTooltip(id: string): string {
       kind: 'stagePan',
       onDown: (e) => { this.beginStagePan(e.currentTarget as HTMLElement, e); },
       onMove: (e) => { if (this.stageDragging) { this.moveStagePan(e); this.updateScreenLabels(); } },
-      onUp:   (e) => { (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId); this.stageDragging = false; },
+      onUp: (e) => { (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId); this.stageDragging = false; },
     };
   }
 
@@ -1127,7 +1127,7 @@ skelLabelTooltip(id: string): string {
    * - Drag point -> moves only that point (bones update automatically)
    */
   private makeSelectTool(): Tool {
-    type Corner = 'nw'|'ne'|'sw'|'se';
+    type Corner = 'nw' | 'ne' | 'sw' | 'se';
     let draggingBoxId: Id | null = null;
     let resizingId: Id | null = null;
     let corner: Corner | null = null;
@@ -1184,7 +1184,7 @@ skelLabelTooltip(id: string): string {
 
         // Move only if clicked INSIDE the currently selected box
         const sel = this.selectedBox();
-        if (sel && pImg.x>=sel.x && pImg.x<=sel.x+sel.w && pImg.y>=sel.y && pImg.y<=sel.y+sel.h) {
+        if (sel && pImg.x >= sel.x && pImg.x <= sel.x + sel.w && pImg.y >= sel.y && pImg.y <= sel.y + sel.h) {
           draggingBoxId = sel.id;
           lastImg = pImg;
           ctx.requestPaint(); return;
@@ -1242,7 +1242,7 @@ skelLabelTooltip(id: string): string {
           this.boxes.update(list => list.map(b => {
             if (b.id !== draggingBoxId) return b;
             let x = b.x + dx, y = b.y + dy;
-            x = Math.max(0, Math.min(x, this.imageWidth()  - b.w));
+            x = Math.max(0, Math.min(x, this.imageWidth() - b.w));
             y = Math.max(0, Math.min(y, this.imageHeight() - b.h));
             return { ...b, x, y };
           }));
@@ -1263,7 +1263,7 @@ skelLabelTooltip(id: string): string {
             if (corner === 'se') { const nx = Math.max(x + minW, curClamp.x); const ny = Math.max(y + minH, curClamp.y); w = nx - x; h = ny - y; }
 
             // Clamp to image
-            x = Math.max(0, Math.min(x, this.imageWidth()  - w));
+            x = Math.max(0, Math.min(x, this.imageWidth() - w));
             y = Math.max(0, Math.min(y, this.imageHeight() - h));
 
             return { ...b, x, y, w, h };
@@ -1279,7 +1279,7 @@ skelLabelTooltip(id: string): string {
         ctx.requestPaint(); this.updateScreenLabels();
       },
 
-      drawOverlay: () => {}
+      drawOverlay: () => { }
     };
   }
 
@@ -1297,7 +1297,7 @@ skelLabelTooltip(id: string): string {
   private makeSkeletonTool(): Tool {
     let localSelecting = false; // track whether we keep chaining
 
-    const addSkeletonWithPoint = (p: {x:number;y:number}): { sk: SkeletonAnn; pid: string } => {
+    const addSkeletonWithPoint = (p: { x: number; y: number }): { sk: SkeletonAnn; pid: string } => {
       const id = this.idSeq++;
       const pid = 'p' + (this.pointSeq++);
       const sk: SkeletonAnn = {
@@ -1311,7 +1311,7 @@ skelLabelTooltip(id: string): string {
       return { sk, pid };
     };
 
-    const addPointToSkeleton = (sk: SkeletonAnn, p: {x:number;y:number}): { pid: string } => {
+    const addPointToSkeleton = (sk: SkeletonAnn, p: { x: number; y: number }): { pid: string } => {
       const pid = 'p' + (this.pointSeq++);
       const next: SkeletonAnn = {
         ...sk,
@@ -1323,14 +1323,14 @@ skelLabelTooltip(id: string): string {
 
     const ensureEdge = (sk: SkeletonAnn, a: string, b: string) => {
       const exists = sk.edges.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
-  if (exists) return;
+      if (exists) return;
 
-  // force tuple type for the appended value
-  const next: SkeletonAnn = {
-    ...sk,
-    edges: [...sk.edges, [a, b] as [string, string]],
-  };
-  this.skeletons.update(arr => arr.map(s => (s.id === sk.id ? next : s)));
+      // force tuple type for the appended value
+      const next: SkeletonAnn = {
+        ...sk,
+        edges: [...sk.edges, [a, b] as [string, string]],
+      };
+      this.skeletons.update(arr => arr.map(s => (s.id === sk.id ? next : s)));
     };
 
     const mergeSkeletons = (keepId: Id, dropId: Id) => {
@@ -1344,14 +1344,14 @@ skelLabelTooltip(id: string): string {
       }
       // move edges (remap pids if we ever renamed)
       const movedEdges: [string, string][] = [...keep.edges];
-  for (const [a, b] of drop.edges) {
-    // if you remap pids, do that first
-    const aa = movedPts[a] ? a : ('m' + a in movedPts ? ('m' + a) : a);
-    const bb = movedPts[b] ? b : ('m' + b in movedPts ? ('m' + b) : b);
-    if (!movedEdges.some(([x, y]) => (x === aa && y === bb) || (x === bb && y === aa))) {
-      movedEdges.push([aa, bb]); // <- OK: movedEdges is a tuple array
-    }
-  }
+      for (const [a, b] of drop.edges) {
+        // if you remap pids, do that first
+        const aa = movedPts[a] ? a : ('m' + a in movedPts ? ('m' + a) : a);
+        const bb = movedPts[b] ? b : ('m' + b in movedPts ? ('m' + b) : b);
+        if (!movedEdges.some(([x, y]) => (x === aa && y === bb) || (x === bb && y === aa))) {
+          movedEdges.push([aa, bb]); // <- OK: movedEdges is a tuple array
+        }
+      }
       // adopt keep's color (per spec: prioritize selected point's skeleton color)
       const merged: SkeletonAnn = { ...keep, points: movedPts, edges: movedEdges };
       this.skeletons.update(arr => {
@@ -1361,37 +1361,37 @@ skelLabelTooltip(id: string): string {
     };
 
     const clickExistingPoint = (hit: { skId: Id; pid: string }, ctrl: boolean) => {
-  const sel = this.selection();
+      const sel = this.selection();
 
-  if (sel.type === 'point') {
-    if (sel.id === hit.skId) {
-      // Same skeleton: connect
-      const sk = this.skeletons().find(s => s.id === sel.id)!;
-      ensureEdge(sk, sel.pid, hit.pid);
-      this.selection.set({ type: 'point', id: hit.skId, pid: hit.pid });
-    } else {
-      // Different skeletons: merge into the selected point's skeleton, then connect
-      const keepId = sel.id;                 // keep selected point's skeleton/color
-      const dropId = hit.skId;
-      mergeSkeletons(keepId, dropId);
-      const merged = this.skeletons().find(s => s.id === keepId)!;
-      ensureEdge(merged, sel.pid, hit.pid);
-      this.selection.set({ type: 'point', id: keepId, pid: hit.pid });
-    }
+      if (sel.type === 'point') {
+        if (sel.id === hit.skId) {
+          // Same skeleton: connect
+          const sk = this.skeletons().find(s => s.id === sel.id)!;
+          ensureEdge(sk, sel.pid, hit.pid);
+          this.selection.set({ type: 'point', id: hit.skId, pid: hit.pid });
+        } else {
+          // Different skeletons: merge into the selected point's skeleton, then connect
+          const keepId = sel.id;                 // keep selected point's skeleton/color
+          const dropId = hit.skId;
+          mergeSkeletons(keepId, dropId);
+          const merged = this.skeletons().find(s => s.id === keepId)!;
+          ensureEdge(merged, sel.pid, hit.pid);
+          this.selection.set({ type: 'point', id: keepId, pid: hit.pid });
+        }
 
-    // Ctrl toggles chaining vs. exit to Select
-    if (!ctrl) this.currentTool.set(this.selectToolObj);
+        // Ctrl toggles chaining vs. exit to Select
+        if (!ctrl) this.currentTool.set(this.selectToolObj);
 
-  } else {
-    // No prior point selected: just select the clicked point; stay in Skeleton tool.
-    this.selection.set({ type: 'point', id: hit.skId, pid: hit.pid });
-  }
+      } else {
+        // No prior point selected: just select the clicked point; stay in Skeleton tool.
+        this.selection.set({ type: 'point', id: hit.skId, pid: hit.pid });
+      }
 
-  this.requestPaint();
-};
+      this.requestPaint();
+    };
 
 
-    const clickEmpty = (pImg: {x:number;y:number}, ctrl: boolean) => {
+    const clickEmpty = (pImg: { x: number; y: number }, ctrl: boolean) => {
       const sel = this.selection();
       if (sel.type === 'point') {
         // add new point, connect to previous
@@ -1425,9 +1425,9 @@ skelLabelTooltip(id: string): string {
         const p = ctx.clampToImage(ctx.screenToImage(e.clientX, e.clientY));
         clickEmpty(p, ctrl);
       },
-      onMove: (_e, _ctx) => {},
-      onUp:   (_e, _ctx) => {},
-      drawOverlay: (_g, _ctx) => {},
+      onMove: (_e, _ctx) => { },
+      onUp: (_e, _ctx) => { },
+      drawOverlay: (_g, _ctx) => { },
     };
   }
 
@@ -1460,7 +1460,7 @@ skelLabelTooltip(id: string): string {
         const nextPts = { ...sk.points };
         if (!nextPts[s.pid]) return sk;
         delete nextPts[s.pid];
-        const nextEdges = sk.edges.filter(([a,b]) => a !== s.pid && b !== s.pid);
+        const nextEdges = sk.edges.filter(([a, b]) => a !== s.pid && b !== s.pid);
         return { ...sk, points: nextPts, edges: nextEdges };
       }).filter(sk => Object.keys(sk.points).length > 0));
       this.selection.set({ type: 'skeleton', id: s.id }); // fallback to skeleton if it still exists
@@ -1490,8 +1490,8 @@ skelLabelTooltip(id: string): string {
   private pendingOptimistic: Array<{ userId: string; content: string }> = [];
   private uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-  onSlideIdInput(e: Event)    { this.currentSlideId.set((e.target as HTMLInputElement).value.trim()); }
-  onUserIdInput(e: Event)     { this.userId.set((e.target as HTMLInputElement).value.trim()); }
+  onSlideIdInput(e: Event) { this.currentSlideId.set((e.target as HTMLInputElement).value.trim()); }
+  onUserIdInput(e: Event) { this.userId.set((e.target as HTMLInputElement).value.trim()); }
   onNewCommentInput(e: Event) { this.newComment.set((e.target as HTMLTextAreaElement).value); }
 
   connectToSlide() {
@@ -1533,7 +1533,7 @@ skelLabelTooltip(id: string): string {
   }
 
   private disposeSocketHandlers() {
-    for (const off of this.socketSubs) try { off(); } catch {}
+    for (const off of this.socketSubs) try { off(); } catch { }
     this.socketSubs = [];
   }
 
@@ -1669,6 +1669,6 @@ skelLabelTooltip(id: string): string {
   private hashColor(s: string): string {
     let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
     const r = (h >>> 16) & 0xff, g = (h >>> 8) & 0xff, b = h & 0xff;
-    return `rgb(${128 + (r>>1)}, ${128 + (g>>1)}, ${128 + (b>>1)})`;
+    return `rgb(${128 + (r >> 1)}, ${128 + (g >> 1)}, ${128 + (b >> 1)})`;
   }
 }

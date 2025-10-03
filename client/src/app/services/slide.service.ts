@@ -86,5 +86,11 @@ export class SlideService {
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
     return this.http.get<getCommentDTO>('http://localhost:8080/slide/comments/' + slideId, {headers: header});
   }
+
+  deleteSlide(slideId: string) {
+    const token = this.auth.getToken();
+    const header = new HttpHeaders().set("Authorization", "Bearer " + token);
+    return this.http.delete('http://localhost:8080/slide/' + slideId, {headers: header});
+  }
 }
 

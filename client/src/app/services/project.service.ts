@@ -23,6 +23,12 @@ export interface UserRolesDTO {
   role: "admin" | "write" | "read";
 }
 
+export interface ProjectUser {
+  role: "admin" | "write" | "read";
+  userId: string;
+  userName: string;
+  email: string;
+}
 
 @Injectable({
   providedIn: 'root'
@@ -47,6 +53,12 @@ export class ProjectService {
     return this.http.get<[Project]>('http://localhost:8080/project/all', {headers: header});
   }
 
+  getProjectUsers(projectId: string) {
+    const token = this.auth.getToken();
+    const header = new HttpHeaders().set("Authorization", "Bearer " + token);
+    return this.http.get<[ProjectUser]>('http://localhost:8080/project/all_user_project/' + projectId, {headers: header});
+  }
+
   addWriteUser(userEmail: string, projectId: string) {
     const token = this.auth.getToken();
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
@@ -57,5 +69,11 @@ export class ProjectService {
     const token = this.auth.getToken();
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
     return this.http.patch<ProjectResponseDTO>('http://localhost:8080/project/add_read_user/' + userEmail + '/' + projectId, null, {headers: header});
+  }
+
+  deleteProject(projectId: string) {
+    const token = this.auth.getToken();
+    const header = new HttpHeaders().set("Authorization", "Bearer " + token);
+    return this.http.delete('http://localhost:8080/project/' + projectId, {headers: header});
   }
 }

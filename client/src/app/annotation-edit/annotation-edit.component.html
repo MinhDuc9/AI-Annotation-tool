@@ -1,406 +1,345 @@
 <!-- top of file -->
-<app-annotation-topbar
-  (undo)="onTopbarUndo()"
-  (redo)="onTopbarRedo()">
+<app-annotation-topbar (undo)="onTopbarUndo()" (redo)="onTopbarRedo()">
 </app-annotation-topbar>
 
 <mat-sidenav-container class="layout">
   <!-- Right drawer -->
   <mat-sidenav position="end" mode="side" [(opened)]="sidenavOpen" class="ann-sidenav">
 
-  <mat-tab-group>
-    <!-- TAB: Annotations (your existing sidebar UI, unchanged content) -->
-    <mat-tab label="Annotations">
-      <div class="sidenav-header">
-        <h3>Annotations</h3>
-        <div class="spacer"></div>
-        <input type="file" hidden #fileChooser accept="image/*" (change)="onChooseImage($event)">
-        <button mat-icon-button (click)="fileChooser.click()" matTooltip="Load Image"><mat-icon>image</mat-icon></button>
-        <button mat-icon-button (click)="onExport()" matTooltip="Export JSON"><mat-icon>download</mat-icon></button>
-        <button mat-icon-button (click)="onClear()" matTooltip="Clear"><mat-icon>delete_sweep</mat-icon></button>
-        <button mat-icon-button (click)="sidenavOpen = false" matTooltip="Close"><mat-icon>chevron_right</mat-icon></button>
-      </div>
+    <mat-tab-group>
+      <!-- TAB: Annotations (your existing sidebar UI, unchanged content) -->
+      <mat-tab label="Annotations">
+        <div class="sidenav-header">
+          <h3>Annotations</h3>
+          <div class="spacer"></div>
+          <input type="file" hidden #fileChooser accept="image/*" (change)="onChooseImage($event)">
+          <button mat-icon-button (click)="fileChooser.click()"
+            matTooltip="Load Image"><mat-icon>image</mat-icon></button>
+          <button mat-icon-button (click)="onExport()" matTooltip="Export JSON"><mat-icon>download</mat-icon></button>
+          <button mat-icon-button (click)="onClear()" matTooltip="Clear"><mat-icon>delete_sweep</mat-icon></button>
+          <button mat-icon-button (click)="sidenavOpen = false"
+            matTooltip="Close"><mat-icon>chevron_right</mat-icon></button>
+        </div>
 
-@if (currentTool().kind === 'box') {
-  <h4 class="section">Active Box</h4>
-  <div class="side-section">
-    <div class="field">
-      <label>Active Label</label>
-     <mat-form-field appearance="outline" style="width:100%">
+        @if (currentTool().kind === 'box') {
+        <h4 class="section">Active Box</h4>
+        <div class="side-section">
+          <div class="field">
+            <label>Active Label</label>
+            <mat-form-field appearance="outline" style="width:100%">
 
-  <mat-select
-  [value]="activeLabelId()"
-  (valueChange)="onActiveBoxLabelChange($event)"
-  [hideSingleSelectionIndicator]="true"
-  panelClass="label-panel"
-  (openedChange)="!$event && hoveredLabelId.set(null)">
-  <mat-select-trigger>{{ boxLabelNameById(activeLabelId()) }}</mat-select-trigger>
+              <mat-select [value]="activeLabelId()" (valueChange)="onActiveBoxLabelChange($event)"
+                [hideSingleSelectionIndicator]="true" panelClass="label-panel"
+                (openedChange)="!$event && hoveredLabelId.set(null)">
+                <mat-select-trigger>{{ boxLabelNameById(activeLabelId()) }}</mat-select-trigger>
 
-  @for (l of boxLabels(); track l.id) {
-    <mat-option
-      [value]="l.id"
-      class="label-opt"
-      (mouseenter)="hoveredLabelId.set(l.id)"
-      (mouseleave)="hoveredLabelId.set(null)">
-      <span class="opt-text">{{ l.name }}</span>
-      <span class="opt-indicator">
-        @if (hoveredLabelId() === l.id) {
-          <!-- inside the option's right-side indicator container -->
-<span class="opt-tip"
-      [matTooltip]="boxLabelTooltip(l.id)">
-  <button
-    mat-icon-button
-    type="button"
-    class="opt-minus"
-    tabindex="-1"
-    (click)="$event.stopPropagation(); deleteBoxLabelCompact(l.id)"
-    [disabled]="!canDeleteBoxLabel(l.id)">
-    <mat-icon fontIcon="remove"></mat-icon>
-  </button>
-</span>
+                @for (l of boxLabels(); track l.id) {
+                <mat-option [value]="l.id" class="label-opt" (mouseenter)="hoveredLabelId.set(l.id)"
+                  (mouseleave)="hoveredLabelId.set(null)">
+                  <span class="opt-text">{{ l.name }}</span>
+                  <span class="opt-indicator">
+                    @if (hoveredLabelId() === l.id) {
+                    <!-- inside the option's right-side indicator container -->
+                    <span class="opt-tip" [matTooltip]="boxLabelTooltip(l.id)">
+                      <button mat-icon-button type="button" class="opt-minus" tabindex="-1"
+                        (click)="$event.stopPropagation(); deleteBoxLabelCompact(l.id)"
+                        [disabled]="!canDeleteBoxLabel(l.id)">
+                        <mat-icon fontIcon="remove"></mat-icon>
+                      </button>
+                    </span>
 
-        } @else if (isSelectedOption(l.id, activeLabelId())) {
-          <mat-icon class="opt-check" fontIcon="check"></mat-icon>
+                    } @else if (isSelectedOption(l.id, activeLabelId())) {
+                    <mat-icon class="opt-check" fontIcon="check"></mat-icon>
+                    }
+                  </span>
+                </mat-option>
+                }
+              </mat-select>
+
+
+              <button mat-icon-button matSuffix aria-label="Add label" (click)="addBoxLabelPrompt()">
+                <mat-icon fontIcon="add"></mat-icon>
+              </button>
+            </mat-form-field>
+
+
+          </div>
+
+          <div class="field">
+            <label>Active Color</label>
+            <input type="color" class="color-input" [value]="activeColor()" (input)="onActiveBoxColorInput($event)">
+          </div>
+        </div>
         }
-      </span>
-    </mat-option>
-  }
-</mat-select>
 
 
-  <button mat-icon-button matSuffix aria-label="Add label" (click)="addBoxLabelPrompt()">
-    <mat-icon fontIcon="add"></mat-icon>
-  </button>
-</mat-form-field>
+        @if (currentTool().kind === 'skeleton' && !(selection().type === 'point')) {
+        <h4 class="section">Active Skeleton</h4>
+        <div class="side-section">
+          <div class="field">
+            <label id="activeSkelLabel">Active Label</label>
 
+            <mat-form-field appearance="outline" style="width:100%">
+              <mat-select aria-labelledby="activeSkelLabel" [value]="activeSkelLabelId()"
+                (valueChange)="onActiveSkelLabelChange($event)" [hideSingleSelectionIndicator]="true"
+                panelClass="anno-label-panel" (openedChange)="!$event && hoveredLabelId.set(null)">
 
-    </div>
+                <mat-select-trigger>
+                  {{ skelLabelNameById(activeSkelLabelId()) }}
+                </mat-select-trigger>
 
-    <div class="field">
-      <label>Active Color</label>
-      <input type="color" class="color-input"
-             [value]="activeColor()"
-             (input)="onActiveBoxColorInput($event)">
-    </div>
-  </div>
-}
+                @for (l of skelLabels(); track l.id) {
+                <mat-option [value]="l.id" class="label-opt" (mouseenter)="hoveredLabelId.set(l.id)"
+                  (mouseleave)="hoveredLabelId.set(null)">
 
+                  <span class="opt-text">{{ l.name }}</span>
+                  <span class="opt-indicator">
+                    @if (hoveredLabelId() === l.id) {
+                    <span class="opt-tip" [matTooltip]="skelLabelTooltip(l.id)">
+                      <button mat-icon-button type="button" class="opt-minus" tabindex="-1"
+                        (click)="$event.stopPropagation(); deleteSkelLabelCompact(l.id)"
+                        [disabled]="!canDeleteSkelLabel(l.id)">
+                        <mat-icon fontIcon="remove"></mat-icon>
+                      </button>
+                    </span>
 
-@if (currentTool().kind === 'skeleton' && !(selection().type === 'point')) {
-  <h4 class="section">Active Skeleton</h4>
-  <div class="side-section">
-    <div class="field">
-      <label id="activeSkelLabel">Active Label</label>
-
-      <mat-form-field appearance="outline" style="width:100%">
-        <mat-select
-          aria-labelledby="activeSkelLabel"
-          [value]="activeSkelLabelId()"
-          (valueChange)="onActiveSkelLabelChange($event)"
-          [hideSingleSelectionIndicator]="true"
-          panelClass="anno-label-panel"
-          (openedChange)="!$event && hoveredLabelId.set(null)">
-
-          <mat-select-trigger>
-            {{ skelLabelNameById(activeSkelLabelId()) }}
-          </mat-select-trigger>
-
-          @for (l of skelLabels(); track l.id) {
-            <mat-option
-              [value]="l.id"
-              class="label-opt"
-              (mouseenter)="hoveredLabelId.set(l.id)"
-              (mouseleave)="hoveredLabelId.set(null)">
-
-              <span class="opt-text">{{ l.name }}</span>
-              <span class="opt-indicator">
-                @if (hoveredLabelId() === l.id) {
-                  <span class="opt-tip"
-      [matTooltip]="skelLabelTooltip(l.id)">
-  <button
-    mat-icon-button
-    type="button"
-    class="opt-minus"
-    tabindex="-1"
-    (click)="$event.stopPropagation(); deleteSkelLabelCompact(l.id)"
-    [disabled]="!canDeleteSkelLabel(l.id)">
-    <mat-icon fontIcon="remove"></mat-icon>
-  </button>
-</span>
-
-                } @else if (isSelectedOption(l.id, activeSkelLabelId())) {
-                  <mat-icon class="opt-check" fontIcon="check"></mat-icon>
+                    } @else if (isSelectedOption(l.id, activeSkelLabelId())) {
+                    <mat-icon class="opt-check" fontIcon="check"></mat-icon>
+                    }
+                  </span>
+                </mat-option>
                 }
-              </span>
-            </mat-option>
-          }
-        </mat-select>
+              </mat-select>
 
-        <!-- add (+) -->
-        <button mat-icon-button matSuffix aria-label="Add keypoint label" (click)="addSkelLabelPrompt()">
-          <mat-icon fontIcon="add"></mat-icon>
-        </button>
-      </mat-form-field>
-    </div>
+              <!-- add (+) -->
+              <button mat-icon-button matSuffix aria-label="Add keypoint label" (click)="addSkelLabelPrompt()">
+                <mat-icon fontIcon="add"></mat-icon>
+              </button>
+            </mat-form-field>
+          </div>
 
-    <div class="field">
-      <label>Active Color</label>
-      <input type="color" class="color-input"
-             [value]="activeSkelColor()"
-             (input)="onActiveSkelColorInput($event)">
-    </div>
-  </div>
-}
+          <div class="field">
+            <label>Active Color</label>
+            <input type="color" class="color-input" [value]="activeSkelColor()"
+              (input)="onActiveSkelColorInput($event)">
+          </div>
+        </div>
+        }
 
 
-      @if (selection().type === 'box' && selection().id !== null) {
-<h4 class="section">Selected Box</h4>
-  <div class="side-section">
-    <div class="field">
-      <label id="selectedBoxLabel">Label</label>
+        @if (selection().type === 'box' && selection().id !== null) {
+        <h4 class="section">Selected Box</h4>
+        <div class="side-section">
+          <div class="field">
+            <label id="selectedBoxLabel">Label</label>
 
-      <mat-form-field appearance="outline" style="width:100%">
-        <mat-select
-          aria-labelledby="selectedBoxLabel"
-          [value]="selectedBoxLabelId()"
-          (valueChange)="onSelectedLabelChange($event)"
-          [hideSingleSelectionIndicator]="true"
-          panelClass="anno-label-panel"
-          (openedChange)="!$event && hoveredLabelId.set(null)">
+            <mat-form-field appearance="outline" style="width:100%">
+              <mat-select aria-labelledby="selectedBoxLabel" [value]="selectedBoxLabelId()"
+                (valueChange)="onSelectedLabelChange($event)" [hideSingleSelectionIndicator]="true"
+                panelClass="anno-label-panel" (openedChange)="!$event && hoveredLabelId.set(null)">
 
-          <mat-select-trigger>
-            {{ boxLabelNameById(selectedBoxLabelId()) }}
-          </mat-select-trigger>
+                <mat-select-trigger>
+                  {{ boxLabelNameById(selectedBoxLabelId()) }}
+                </mat-select-trigger>
 
-          @for (l of boxLabels(); track l.id) {
-            <mat-option
-              [value]="l.id"
-              class="label-opt"
-              (mouseenter)="hoveredLabelId.set(l.id)"
-              (mouseleave)="hoveredLabelId.set(null)">
+                @for (l of boxLabels(); track l.id) {
+                <mat-option [value]="l.id" class="label-opt" (mouseenter)="hoveredLabelId.set(l.id)"
+                  (mouseleave)="hoveredLabelId.set(null)">
 
-              <span class="opt-text">{{ l.name }}</span>
-              <span class="opt-indicator">
-                @if (hoveredLabelId() === l.id) {
-                  <!-- inside the option's right-side indicator container -->
-<span class="opt-tip"
-      [matTooltip]="boxLabelTooltip(l.id)">
-  <button
-    mat-icon-button
-    type="button"
-    class="opt-minus"
-    tabindex="-1"
-    (click)="$event.stopPropagation(); deleteBoxLabelCompact(l.id)"
-    [disabled]="!canDeleteBoxLabel(l.id)">
-    <mat-icon fontIcon="remove"></mat-icon>
-  </button>
-</span>
+                  <span class="opt-text">{{ l.name }}</span>
+                  <span class="opt-indicator">
+                    @if (hoveredLabelId() === l.id) {
+                    <!-- inside the option's right-side indicator container -->
+                    <span class="opt-tip" [matTooltip]="boxLabelTooltip(l.id)">
+                      <button mat-icon-button type="button" class="opt-minus" tabindex="-1"
+                        (click)="$event.stopPropagation(); deleteBoxLabelCompact(l.id)"
+                        [disabled]="!canDeleteBoxLabel(l.id)">
+                        <mat-icon fontIcon="remove"></mat-icon>
+                      </button>
+                    </span>
 
-                } @else if (isSelectedOption(l.id, selectedBoxLabelId())) {
-                  <mat-icon class="opt-check" fontIcon="check"></mat-icon>
+                    } @else if (isSelectedOption(l.id, selectedBoxLabelId())) {
+                    <mat-icon class="opt-check" fontIcon="check"></mat-icon>
+                    }
+                  </span>
+                </mat-option>
                 }
-              </span>
-            </mat-option>
-          }
-        </mat-select>
+              </mat-select>
 
-        <!-- add (+) -->
-        <button mat-icon-button matSuffix aria-label="Add label" (click)="addBoxLabelPrompt()">
-          <mat-icon fontIcon="add"></mat-icon>
-        </button>
-      </mat-form-field>
-    </div>
+              <!-- add (+) -->
+              <button mat-icon-button matSuffix aria-label="Add label" (click)="addBoxLabelPrompt()">
+                <mat-icon fontIcon="add"></mat-icon>
+              </button>
+            </mat-form-field>
+          </div>
           <div class="field">
             <label>Color</label>
             <input type="color" class="color-input" [value]="selectedBoxColor()" (input)="onSelectedColorInput($event)">
           </div>
         </div>
-      }
-
-      <!-- SELECTED SKELETON (color only) -->
-@if (selection().type === 'skeleton' && selection().id !== null) {
-  <h4 class="section">Selected Skeleton</h4>
-  <div class="side-section">
-    <div class="field">
-      <label>Color (applies to all bones)</label>
-      <input type="color" class="color-input" [value]="skeletonColor()" (input)="onSkeletonColorInput($event)">
-    </div>
-  </div>
-}
-
-<!-- SELECTED POINT (skeleton color + per-point label) -->
-@if (selection().type === 'point' && selection().id !== null) {
-  <h4 class="section">Selected Point</h4>
-  <div class="side-section">
-    <div class="field">
-      <label id="selectedPointLabel">Point Label</label>
-
-      <mat-form-field appearance="outline" style="width:100%">
-        <mat-select
-          aria-labelledby="selectedPointLabel"
-          [value]="pointLabelId()"
-          (valueChange)="onPointLabelChange($event)"
-          [hideSingleSelectionIndicator]="true"
-          panelClass="anno-label-panel"
-          (openedChange)="!$event && hoveredLabelId.set(null)">
-
-          <mat-select-trigger>
-            {{ skelLabelNameById(pointLabelId()) }}
-          </mat-select-trigger>
-
-          @for (l of skelLabels(); track l.id) {
-            <mat-option
-              [value]="l.id"
-              class="label-opt"
-              (mouseenter)="hoveredLabelId.set(l.id)"
-              (mouseleave)="hoveredLabelId.set(null)">
-
-              <span class="opt-text">{{ l.name }}</span>
-              <span class="opt-indicator">
-                @if (hoveredLabelId() === l.id) {
-                  <span class="opt-tip"
-      [matTooltip]="skelLabelTooltip(l.id)">
-  <button
-    mat-icon-button
-    type="button"
-    class="opt-minus"
-    tabindex="-1"
-    (click)="$event.stopPropagation(); deleteSkelLabelCompact(l.id)"
-    [disabled]="!canDeleteSkelLabel(l.id)">
-    <mat-icon fontIcon="remove"></mat-icon>
-  </button>
-</span>
-
-                } @else if (isSelectedOption(l.id, pointLabelId())) {
-                  <mat-icon class="opt-check" fontIcon="check"></mat-icon>
-                }
-              </span>
-            </mat-option>
-          }
-        </mat-select>
-
-        <!-- add (+) -->
-        <button mat-icon-button matSuffix aria-label="Add keypoint label" (click)="addSkelLabelPrompt()">
-          <mat-icon fontIcon="add"></mat-icon>
-        </button>
-      </mat-form-field>
-    </div>
-    <div class="field">
-      <label>Skeleton Color</label>
-      <input type="color" class="color-input" [value]="skeletonColor()" (input)="onSkeletonColorInput($event)">
-    </div>
-
-
-  </div>
-}
-<h4 class="section">Label Display</h4>
-<div class="side-section label-display-group">
-  <mat-slide-toggle
-    [checked]="showBoxLabels()"
-    (change)="showBoxLabels.set($event.checked)">
-    Show box labels
-  </mat-slide-toggle>
-
-  <mat-slide-toggle
-    [checked]="showPointLabels()"
-    (change)="showPointLabels.set($event.checked)">
-    Show keypoint labels
-  </mat-slide-toggle>
-</div>
-
-
-
-      <h4 class="section">Boxes</h4>
-      <div class="list">
-        @if (boxes().length === 0) {
-          <div class="empty">No boxes yet</div>
-        } @else {
-          @for (b of boxes(); track b.id) {
-            <div class="row" [class.active]="isSelected('box', b.id)" (click)="selectEntity('box', b.id)">
-              <span class="sw" [style.background]="b.color"></span>
-              <span class="name">{{ boxLabelName(b.labelId) }} #{{ b.id }}</span>
-              <span class="meta">{{ b.w | number:'1.0-0' }}×{{ b.h | number:'1.0-0' }}</span>
-            </div>
-          }
         }
-      </div>
-    </mat-tab>
 
-    <!-- TAB: Comments (NEW) -->
-    <mat-tab label="Comments">
-      <div class="sidenav-header">
-        <h3>Comments</h3>
-        <div class="spacer"></div>
-        <button mat-icon-button (click)="sidenavOpen = false" matTooltip="Close">
-          <mat-icon>chevron_right</mat-icon>
-        </button>
-      </div>
-
-      <!-- Connection bar (enter slide id & connect) -->
-      <div class="side-section">
-        <div class="field">
-          <label>Slide ID</label>
-          <mat-form-field appearance="outline" style="width:100%">
-<input matInput
-       placeholder="abc548a0-..."
-       [value]="currentSlideId()"
-       (input)="onSlideIdInput($event)" />
-          </mat-form-field>
-          <div class="row gap">
-            <button mat-raised-button color="primary" (click)="connectToSlide()" [disabled]="isConnected()">Connect</button>
-            <button mat-stroked-button color="warn" (click)="disconnectFromSlide()" [disabled]="!isConnected()">Disconnect</button>
+        <!-- SELECTED SKELETON (color only) -->
+        @if (selection().type === 'skeleton' && selection().id !== null) {
+        <h4 class="section">Selected Skeleton</h4>
+        <div class="side-section">
+          <div class="field">
+            <label>Color (applies to all bones)</label>
+            <input type="color" class="color-input" [value]="skeletonColor()" (input)="onSkeletonColorInput($event)">
           </div>
         </div>
-        <div class="field">
-          <label>Posting as</label>
-          <mat-form-field appearance="outline" style="width:100%">
-<input matInput
-       placeholder="User ID"
-       [value]="userId()"
-       (input)="onUserIdInput($event)" />
-
-          </mat-form-field>
-        </div>
-      </div>
-
-      <h4 class="section">All Comments</h4>
-      <div class="comments-list">
-        @if (comments().length === 0) {
-          <div class="empty">No comments yet</div>
-        } @else {
-          @for (c of comments(); track c.id) {
-            <div class="comment-card mat-elevation-z2">
-              <img mat-card-avatar [src]="avatarUrl(c.userId)" alt="{{ c.userId }} avatar">
-              <div class="comment-content">
-                <div class="comment-meta">
-                  <b>{{ c.userId }}</b>
-                  <span class="dot">&middot;</span>
-                  <span title="{{ c.createdAt | date:'medium' }}">{{ c.createdAt | date:'short' }}</span>
-                </div>
-                <div class="comment-body">{{ c.content }}</div>
-              </div>
-            </div>
-          }
         }
-      </div>
 
-      <mat-divider></mat-divider>
+        <!-- SELECTED POINT (skeleton color + per-point label) -->
+        @if (selection().type === 'point' && selection().id !== null) {
+        <h4 class="section">Selected Point</h4>
+        <div class="side-section">
+          <div class="field">
+            <label id="selectedPointLabel">Point Label</label>
 
-      <div class="side-section">
-        <mat-form-field appearance="outline" style="width:100%">
-          <textarea matInput
-          rows="3"
-          placeholder="Write a comment and press Enter..."
-          [value]="newComment()"
-          (input)="onNewCommentInput($event)"
-          (keydown.enter)="addComment(); $event.preventDefault()">
+            <mat-form-field appearance="outline" style="width:100%">
+              <mat-select aria-labelledby="selectedPointLabel" [value]="pointLabelId()"
+                (valueChange)="onPointLabelChange($event)" [hideSingleSelectionIndicator]="true"
+                panelClass="anno-label-panel" (openedChange)="!$event && hoveredLabelId.set(null)">
+
+                <mat-select-trigger>
+                  {{ skelLabelNameById(pointLabelId()) }}
+                </mat-select-trigger>
+
+                @for (l of skelLabels(); track l.id) {
+                <mat-option [value]="l.id" class="label-opt" (mouseenter)="hoveredLabelId.set(l.id)"
+                  (mouseleave)="hoveredLabelId.set(null)">
+
+                  <span class="opt-text">{{ l.name }}</span>
+                  <span class="opt-indicator">
+                    @if (hoveredLabelId() === l.id) {
+                    <span class="opt-tip" [matTooltip]="skelLabelTooltip(l.id)">
+                      <button mat-icon-button type="button" class="opt-minus" tabindex="-1"
+                        (click)="$event.stopPropagation(); deleteSkelLabelCompact(l.id)"
+                        [disabled]="!canDeleteSkelLabel(l.id)">
+                        <mat-icon fontIcon="remove"></mat-icon>
+                      </button>
+                    </span>
+
+                    } @else if (isSelectedOption(l.id, pointLabelId())) {
+                    <mat-icon class="opt-check" fontIcon="check"></mat-icon>
+                    }
+                  </span>
+                </mat-option>
+                }
+              </mat-select>
+
+              <!-- add (+) -->
+              <button mat-icon-button matSuffix aria-label="Add keypoint label" (click)="addSkelLabelPrompt()">
+                <mat-icon fontIcon="add"></mat-icon>
+              </button>
+            </mat-form-field>
+          </div>
+          <div class="field">
+            <label>Skeleton Color</label>
+            <input type="color" class="color-input" [value]="skeletonColor()" (input)="onSkeletonColorInput($event)">
+          </div>
+
+
+        </div>
+        }
+        <h4 class="section">Label Display</h4>
+        <div class="side-section label-display-group">
+          <mat-slide-toggle [checked]="showBoxLabels()" (change)="showBoxLabels.set($event.checked)">
+            Show box labels
+          </mat-slide-toggle>
+
+          <mat-slide-toggle [checked]="showPointLabels()" (change)="showPointLabels.set($event.checked)">
+            Show keypoint labels
+          </mat-slide-toggle>
+        </div>
+
+
+
+        <h4 class="section">Boxes</h4>
+        <div class="list">
+          @if (boxes().length === 0) {
+          <div class="empty">No boxes yet</div>
+          } @else {
+          @for (b of boxes(); track b.id) {
+          <div class="row" [class.active]="isSelected('box', b.id)" (click)="selectEntity('box', b.id)">
+            <span class="sw" [style.background]="b.color"></span>
+            <span class="name">{{ boxLabelName(b.labelId) }} #{{ b.id }}</span>
+            <span class="meta">{{ b.w | number:'1.0-0' }}×{{ b.h | number:'1.0-0' }}</span>
+          </div>
+          }
+          }
+        </div>
+      </mat-tab>
+
+      <!-- TAB: Comments (NEW) -->
+      <mat-tab label="Comments">
+        <div class="sidenav-header">
+          <h3>Comments</h3>
+          <div class="spacer"></div>
+          <button mat-icon-button (click)="sidenavOpen = false" matTooltip="Close">
+            <mat-icon>chevron_right</mat-icon>
+          </button>
+        </div>
+
+        <!-- Connection bar (enter slide id & connect) -->
+        <div class="side-section">
+          <div class="field">
+            <label>Slide ID</label>
+            <mat-form-field appearance="outline" style="width:100%">
+              <input matInput placeholder="abc548a0-..." [value]="currentSlideId()" (input)="onSlideIdInput($event)" />
+            </mat-form-field>
+            <div class="row gap">
+              <button mat-raised-button color="primary" (click)="connectToSlide()"
+                [disabled]="isConnected()">Connect</button>
+              <button mat-stroked-button color="warn" (click)="disconnectFromSlide()"
+                [disabled]="!isConnected()">Disconnect</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Posting as</label>
+            <mat-form-field appearance="outline" style="width:100%">
+              <input matInput placeholder="User ID" [value]="userId()" (input)="onUserIdInput($event)" />
+
+            </mat-form-field>
+          </div>
+        </div>
+
+        <h4 class="section">All Comments</h4>
+        <div class="comments-list">
+          @if (comments().length === 0) {
+          <div class="empty">No comments yet</div>
+          } @else {
+          @for (c of comments(); track c.id) {
+          <div class="comment-card mat-elevation-z2">
+            <img mat-card-avatar [src]="avatarUrl(c.userId)" alt="{{ c.userId }} avatar">
+            <div class="comment-content">
+              <div class="comment-meta">
+                <b>{{ c.userId }}</b>
+                <span class="dot">&middot;</span>
+                <span title="{{ c.createdAt | date:'medium' }}">{{ c.createdAt | date:'short' }}</span>
+              </div>
+              <div class="comment-body">{{ c.content }}</div>
+            </div>
+          </div>
+          }
+          }
+        </div>
+
+        <mat-divider></mat-divider>
+
+        <div class="side-section">
+          <mat-form-field appearance="outline" style="width:100%">
+            <textarea matInput rows="3" placeholder="Write a comment and press Enter..." [value]="newComment()"
+              (input)="onNewCommentInput($event)" (keydown.enter)="addComment(); $event.preventDefault()">
 </textarea>
 
-        </mat-form-field>
-        <button mat-raised-button color="primary" (click)="addComment()" [disabled]="!isConnected() || !newComment().trim()">Send</button>
-      </div>
-    </mat-tab>
-  </mat-tab-group>
+          </mat-form-field>
+          <button mat-raised-button color="primary" (click)="addComment()"
+            [disabled]="!isConnected() || !newComment().trim()">Send</button>
+        </div>
+      </mat-tab>
+    </mat-tab-group>
 
   </mat-sidenav>
 
@@ -408,21 +347,27 @@
   <mat-sidenav-content>
     <!-- Tool rail -->
     <div class="tool-rail elevation">
-      <button class="tool-btn" [class.active]="currentTool().kind === 'select'" (click)="selectTool('select')" title="Select (V)">
+      <button class="tool-btn" [class.active]="currentTool().kind === 'select'" (click)="selectTool('select')"
+        title="Select (V)">
         <mat-icon fontIcon="near_me"></mat-icon>
       </button>
-      <button class="tool-btn" [class.active]="currentTool().kind === 'box'" (click)="selectTool('box')" title="Box (B)">
+      <button class="tool-btn" [class.active]="currentTool().kind === 'box'" (click)="selectTool('box')"
+        title="Box (B)">
         <mat-icon fontIcon="crop_din"></mat-icon>
       </button>
-      <button class="tool-btn" [class.active]="currentTool().kind === 'skeleton'" (click)="selectTool('skeleton')" title="Skeleton (K)">
+      <button class="tool-btn" [class.active]="currentTool().kind === 'skeleton'" (click)="selectTool('skeleton')"
+        title="Skeleton (K)">
         <mat-icon fontIcon="polyline"></mat-icon>
       </button>
       <div class="rail-sep"></div>
-      <button class="tool-btn" [class.active]="currentTool().kind === 'stagePan'" (click)="selectTool('stagePan')" title="Pan canvas (H)">
+      <button class="tool-btn" [class.active]="currentTool().kind === 'stagePan'" (click)="selectTool('stagePan')"
+        title="Pan canvas (H)">
         <mat-icon fontIcon="pan_tool_alt"></mat-icon>
       </button>
-      <button class="tool-btn" (click)="stageZoomBy( 1)" title="Zoom In (+)"><mat-icon fontIcon="zoom_in"></mat-icon></button>
-      <button class="tool-btn" (click)="stageZoomBy(-1)" title="Zoom Out (-)"><mat-icon fontIcon="zoom_out"></mat-icon></button>
+      <button class="tool-btn" (click)="stageZoomBy( 1)" title="Zoom In (+)"><mat-icon
+          fontIcon="zoom_in"></mat-icon></button>
+      <button class="tool-btn" (click)="stageZoomBy(-1)" title="Zoom Out (-)"><mat-icon
+          fontIcon="zoom_out"></mat-icon></button>
       <div class="rail-fill"></div>
       <button class="tool-btn small" (click)="sidenavOpen = !sidenavOpen" title="Toggle Sidebar">
         <mat-icon>{{ sidenavOpen ? 'chevron_right' : 'chevron_left' }}</mat-icon>
@@ -430,25 +375,16 @@
     </div>
 
     <!-- Stage -->
-    <div class="stage" #stage
-         (wheel)="onStageWheel($event)"
-         (pointerdown)="onStagePointerDown($event)"
-         (pointermove)="onStagePointerMove($event)"
-         (pointerup)="onStagePointerUp($event)"
-         (pointercancel)="onStagePointerUp($event)"
-         [class.pan-mode]="isPanMode()" [class.dragging]="isPanning()">
+    <div class="stage" #stage (wheel)="onStageWheel($event)" (pointerdown)="onStagePointerDown($event)"
+      (pointermove)="onStagePointerMove($event)" (pointerup)="onStagePointerUp($event)"
+      (pointercancel)="onStagePointerUp($event)" [class.pan-mode]="isPanMode()" [class.dragging]="isPanning()">
 
       <!-- Scaled desk -->
       <div class="desk" #desk
-           [style.transform]="'translate(' + stagePan().x + 'px,' + stagePan().y + 'px) scale(' + stageScale() + ')'">
-        <div #viewport class="canvas-viewport"
-             [style.width.px]="canvasSize().w"
-             [style.height.px]="canvasSize().h">
-          <div class="canvas-wrap"
-               (pointerdown)="onPointerDown($event)"
-               (pointermove)="onPointerMove($event)"
-               (pointerup)="onPointerUp($event)"
-               (pointercancel)="onPointerCancel($event)">
+        [style.transform]="'translate(' + stagePan().x + 'px,' + stagePan().y + 'px) scale(' + stageScale() + ')'">
+        <div #viewport class="canvas-viewport" [style.width.px]="canvasSize().w" [style.height.px]="canvasSize().h">
+          <div class="canvas-wrap" (pointerdown)="onPointerDown($event)" (pointermove)="onPointerMove($event)"
+            (pointerup)="onPointerUp($event)" (pointercancel)="onPointerCancel($event)">
             <canvas #bgCanvas class="canvas base"></canvas>
             <canvas #fgCanvas class="canvas overlay"></canvas>
           </div>
@@ -456,36 +392,25 @@
       </div>
 
       <!-- Unscaled HTML labels -->
-<div class="label-layer" #labelLayer>
-  <!-- Box labels -->
-  @for (lbl of boxLabelChips(); track lbl.id) {
-    <div class="label-chip"
-         [style.left.px]="lbl.left"
-         [style.top.px]="lbl.top"
-         [style.maxWidth.px]="lbl.maxWidth"
-         [style.borderColor]="lbl.color"
-         [class.active]="isSelected('box', lbl.id)">
-      <span class="text">{{ lbl.labelName }}</span>
-    </div>
-  }
+      <div class="label-layer" #labelLayer>
+        <!-- Box labels -->
+        @for (lbl of boxLabelChips(); track lbl.id) {
+        <div class="label-chip" [style.left.px]="lbl.left" [style.top.px]="lbl.top" [style.maxWidth.px]="lbl.maxWidth"
+          [style.borderColor]="lbl.color" [class.active]="isSelected('box', lbl.id)">
+          <span class="text">{{ lbl.labelName }}</span>
+        </div>
+        }
 
-  <!-- Point labels -->
-  @for (pl of pointLabelChips(); track pl; let i = $index) {
-    <div class="label-chip point"
-         [style.left.px]="pl.left"
-         [style.top.px]="pl.top"
-         [style.maxWidth.px]="pl.maxWidth"
-         [style.borderColor]="pl.color">
-      <span class="text">{{ pl.labelName }}</span>
-    </div>
-  }
-</div>
+        <!-- Point labels -->
+        @for (pl of pointLabelChips(); track pl; let i = $index) {
+        <div class="label-chip point" [style.left.px]="pl.left" [style.top.px]="pl.top"
+          [style.maxWidth.px]="pl.maxWidth" [style.borderColor]="pl.color">
+          <span class="text">{{ pl.labelName }}</span>
+        </div>
+        }
+      </div>
 
 
     </div>
   </mat-sidenav-content>
 </mat-sidenav-container>
-
-
-
-
