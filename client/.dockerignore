@@ -17,3 +17,16 @@ out
 # OS/editor junk
 .DS_Store
 *.log
+node_modules
+.pnpm-store
+.angular
+dist
+coverage
+.tmp
+.git
+.gitignore
+Dockerfile
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+**/*.log

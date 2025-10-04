@@ -83,7 +83,7 @@ export class ProjectService {
     async ensureUserOwnsProject(projectId: string): Promise<Project> {
         const project = await this.projectRepository.findOne({
             where: { id: projectId },
-            relations: ["userRoles"],
+            relations: ["userRoles", "userRoles.user"],
         });
 
         if (!project) {
@@ -156,6 +156,30 @@ export class ProjectService {
         project.userRoles.push(readRole);
 
         return this.projectRepository.save(project);
+    }
+
+    async getAllUserProject(projectId: string): Promise<
+        {
+            userId: string;
+            userName: string;
+            email: string;
+            role: "admin" | "write" | "read";
+        }[]
+    > {
+        // Ensure the requesting user belongs to the project before listing members
+        await this.ensureUserOwnsProject(projectId);
+
+        const projectRoles = await this.projectUserRoleRepository.find({
+            where: { projectId },
+            relations: ["user"],
+        });
+
+        return projectRoles.map(({ role, user }) => ({
+            role,
+            userId: user.id,
+            userName: user.userName,
+            email: user.email,
+        }));
     }
 
     async update(

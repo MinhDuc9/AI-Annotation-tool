@@ -5,9 +5,9 @@ WORKDIR /app
 # Enable pnpm through corepack
 RUN corepack enable
 
-# Install deps (uses lockfile if present)
-COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install
+# Install deps (uses lockfile for repeatable builds)
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 # Copy source
 COPY . .
