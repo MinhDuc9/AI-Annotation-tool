@@ -8,6 +8,8 @@ import {
   signal,
   Injector,
   OnDestroy,
+  computed,
+  runInInjectionContext,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -26,12 +28,17 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { CommentModel, slideCommentDTO, SlideService } from '../services/slide.service';
 import { SocketCommentDTO, SocketCommentDeletedDTO, SocketService } from '../services/socket.service';
 import { AuthService } from '../services/Auth.service';
-import { Observable } from 'rxjs';
+import { map, distinctUntilChanged, Observable } from 'rxjs';
 import { AnnotationTopbarComponent } from '../annotation-topbar/annotation-topbar.component';
+import { ActivatedRoute, Router } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ScrollingModule } from '@angular/cdk/scrolling';
 
 /* ---------------- Data models (image space) ---------------- */
 export type Id = number;
 export interface LabelDef { id: string; name: string; }
+type SlideMeta = { id: string; index: number };
+
 
 // NEW: label chip models (screen-space)
 type LabelChip = {
@@ -112,7 +119,8 @@ interface Tool {
     MatInputModule,
     MatDividerModule,
     MatSlideToggleModule,
-    AnnotationTopbarComponent
+    AnnotationTopbarComponent,
+    ScrollingModule
   ],
   templateUrl: './annotation-edit.component.html',
   styleUrls: ['./annotation-edit.component.scss'],
@@ -120,6 +128,148 @@ interface Tool {
 export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   private snack = inject(MatSnackBar);
   private injector = inject(Injector);
+  private route = inject(ActivatedRoute);
+private router = inject(Router);
+
+// Querystring routing: /annotate/:project_id?slide=SLIDE_ID
+projectId = toSignal(
+  this.route.paramMap.pipe(map(p => p.get('project_id') ?? ''), distinctUntilChanged()),
+  { initialValue: '' }
+);
+slideIdQ = toSignal(
+  this.route.queryParamMap.pipe(map(q => q.get('slide')), distinctUntilChanged()),
+  { initialValue: null }
+);
+
+// Slides list for the rail
+slides = signal<SlideMeta[]>([]);
+slidesLoading = signal(false);
+slidesError = signal<string | null>(null);
+currentSlideId = computed(() => this.slideIdQ() ?? this.slides()[0]?.id ?? null);
+currentIndex = computed(() => {
+  const id = this.slideIdQ();
+  if (!id) return -1;
+  return this.slides().findIndex(s => s.id === id);
+});
+
+// SIMPLE per-slide stores (no caching/LRU)
+private boxesBySlide = new Map<string, BoxAnn[]>();
+private skeletonsBySlide = new Map<string, SkeletonAnn[]>();
+
+// Keep last slide to persist on switch
+private lastSlideId: string | null = null;
+
+// One shared <img> used by your existing paint() path
+private currentImgUrl: string | null = null;
+
+constructor() {
+  // 1) Stable image path: onload updates flags/sizes and triggers a paint
+  this.img.onload = () => {
+    const w = this.img.naturalWidth || this.img.width;
+    const h = this.img.naturalHeight || this.img.height;
+    this.imageWidth.set(w);
+    this.imageHeight.set(h);
+    this.imgLoaded.set(true);
+
+    // your existing helpers - keep them if you have them
+    this.fitCanvasToImageOrMax?.();
+    this.resizeToContainer?.();
+    this.updateScreenLabels?.();
+    this.requestPaint?.();
+  };
+
+  // 2) Effects: put them in an injection context (not in ngOnInit/AfterViewInit)
+  runInInjectionContext(this.injector, () => {
+    // Load slides when project changes
+    effect(() => {
+      const pid = this.projectId();
+      if (!pid) return;
+      void this.loadSlides(pid);
+    });
+
+    // On slide change: persist outgoing, restore incoming, then load image
+    effect(() => {
+      const id = this.currentSlideId();
+      if (!id) return;
+
+      if (this.lastSlideId && this.lastSlideId !== id) {
+        this.persistCurrentSlideState(this.lastSlideId);
+      }
+  this.restoreSlideState(id);         // put annotations for this slide into signals
+  void this.showSlide(id);            // kicks off image load via <img>.src
+  const idx = this.currentIndex();    // compute index after we know the id
+  if (idx >= 0) void this.prefetchNeighbors(idx); // warm next/prev decodes
+      this.lastSlideId = id;
+    });
+
+    // Keep per-slide stores in sync as you edit (cheap, no LRU)
+    effect(() => {
+      const sid = this.currentSlideId();
+      if (!sid) return;
+      this.boxesBySlide.set(sid, this.boxes().map(b => ({ ...b })));
+      this.skeletonsBySlide.set(sid, this.skeletons().map(sk => ({
+        ...sk, points: { ...sk.points }, edges: sk.edges?.map(e => [e[0], e[1]] as [string, string]) ?? []
+      })));
+    });
+  });
+}
+
+private async loadSlides(projectId: string) {
+  this.slidesLoading.set(true);
+  this.slidesError.set(null);
+  try {
+    const list = await this.slideSvc.listSlidesPromise(projectId);
+    // Add index here
+    const meta: SlideMeta[] = list.map((s, i) => ({ id: s.id, index: i }));
+    this.slides.set(meta);
+
+    if (!this.slideIdQ() && meta.length) {
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { slide: meta[0].id },
+        queryParamsHandling: 'merge',
+        replaceUrl: true
+      });
+    }
+  } catch (e: any) {
+    this.slidesError.set(e?.message ?? 'Failed to load slides');
+  } finally {
+    this.slidesLoading.set(false);
+  }
+}
+
+private async showSlide(slideId: string) {
+  // Minimal: fetch blob and set <img>.src -> your existing paint() uses this.img
+  const blob = await this.slideSvc.getSlideImageBlob(slideId);
+  const url = URL.createObjectURL(blob);
+  if (this.currentImgUrl) URL.revokeObjectURL(this.currentImgUrl);
+  this.currentImgUrl = url;
+  this.imgLoaded.set(false);         // let onload flip it back to true
+  this.img.src = url;
+}
+
+private persistCurrentSlideState(slideId: string) {
+  this.boxesBySlide.set(slideId, this.boxes().map(b => ({ ...b })));
+  this.skeletonsBySlide.set(slideId, this.skeletons().map(sk => ({
+    ...sk, points: { ...sk.points }, edges: sk.edges?.map(e => [e[0], e[1]] as [string, string]) ?? []
+  })));
+  // optional: stash pan/zoom if you keep it per slide
+}
+
+private restoreSlideState(slideId: string) {
+  this.boxes.set((this.boxesBySlide.get(slideId) ?? []).map(b => ({ ...b })));
+  this.skeletons.set((this.skeletonsBySlide.get(slideId) ?? []).map(sk => ({
+    ...sk, points: { ...sk.points }, edges: sk.edges?.map(e => [e[0], e[1]] as [string, string]) ?? []
+  })));
+  // clear selection on slide switch
+  this.selection.set({ type: null, id: null });
+  this.requestPaint?.();
+}
+
+goToSlide(id: string) {
+  this.router.navigate([], { relativeTo: this.route, queryParams: { slide: id }, queryParamsHandling: 'merge' });
+}
+
 
   onTopbarUndo() {
     // forward to your annotation history or use service:
@@ -789,19 +939,24 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     this.ensureDevicePixels(bg);
     this.ensureDevicePixels(fg);
 
-    // BACKGROUND image
-    gBg.setTransform(1, 0, 0, 1, 0, 0);
-    gBg.clearRect(0, 0, bg.width, bg.height);
-    if (this.imgLoaded()) {
-      gBg.imageSmoothingEnabled = true;
-      gBg.drawImage(this.img, 0, 0, bg.width, bg.height);
-    } else {
-      const size = 16;
-      for (let y = 0; y < bg.height; y += size) for (let x = 0; x < bg.width; x += size) {
-        gBg.fillStyle = ((x / size + y / size) % 2 === 0) ? '#111' : '#161616';
-        gBg.fillRect(x, y, size, size);
-      }
+    // BACKGROUND
+gBg.setTransform(1, 0, 0, 1, 0, 0);
+gBg.clearRect(0, 0, bg.width, bg.height);
+
+if (this.imgLoaded()) {
+  gBg.imageSmoothingEnabled = true;
+  gBg.drawImage(this.img, 0, 0, bg.width, bg.height);
+} else {
+  // (optional) checkerboard while waiting
+  const size = 16;
+  for (let y = 0; y < bg.height; y += size) {
+    for (let x = 0; x < bg.width; x += size) {
+      gBg.fillStyle = ((x / size + y / size) % 2 === 0) ? '#111' : '#161616';
+      gBg.fillRect(x, y, size, size);
     }
+  }
+}
+
 
     // OVERLAY in image space
     g.setTransform(1, 0, 0, 1, 0, 0);
@@ -1479,7 +1634,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   private socket = inject(SocketService);
   private auth = inject(AuthService);
 
-  currentSlideId = signal<string>('');    // user can paste/set it (project WIP)
+  currentCommentSlideId = signal<string>('');    // user can paste/set it (project WIP)
   userId = signal<string>((this.auth.getUserId() ?? crypto.randomUUID()).trim());
 
   comments = signal<CommentModel[]>([]);
@@ -1490,15 +1645,15 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   private pendingOptimistic: Array<{ userId: string; content: string }> = [];
   private uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-  onSlideIdInput(e: Event) { this.currentSlideId.set((e.target as HTMLInputElement).value.trim()); }
+  onSlideIdInput(e: Event) { this.currentCommentSlideId.set((e.target as HTMLInputElement).value.trim()); }
   onUserIdInput(e: Event) { this.userId.set((e.target as HTMLInputElement).value.trim()); }
   onNewCommentInput(e: Event) { this.newComment.set((e.target as HTMLTextAreaElement).value); }
 
   connectToSlide() {
-    const id = this.currentSlideId().trim();
+    const id = this.currentCommentSlideId().trim();
     if (!id) { this.snack.open('Enter a Slide ID first', undefined, { duration: 1500 }); return; }
 
-    this.currentSlideId.set(id);
+    this.currentCommentSlideId.set(id);
     this.pendingOptimistic = [];
     this.comments.set([]);
 
@@ -1608,7 +1763,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   }
 
   private isForCurrentSlide(slideId?: string | null): boolean {
-    const current = this.currentSlideId();
+    const current = this.currentCommentSlideId();
     return !!slideId && !!current && slideId === current;
   }
 
@@ -1622,9 +1777,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
   }
 
   addComment() {
-    const slideId = this.currentSlideId().trim();
+    const slideId = this.currentCommentSlideId().trim();
     if (!slideId) { this.snack.open('Enter a Slide ID first', undefined, { duration: 1500 }); return; }
-    this.currentSlideId.set(slideId);
+    this.currentCommentSlideId.set(slideId);
 
     const content = this.newComment().trim();
     if (!content) return;
@@ -1671,4 +1826,100 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     const r = (h >>> 16) & 0xff, g = (h >>> 8) & 0xff, b = h & 0xff;
     return `rgb(${128 + (r >> 1)}, ${128 + (g >> 1)}, ${128 + (b >> 1)})`;
   }
+
+trackSlideId = (_: number, s: { id: string }) => s.id;
+
+// Thumbnails store (data URLs)
+thumbs = signal<Record<string, string>>({});
+private thumbInFlight = new Set<string>();
+
+// Optional: set to true when your backend serves thumbs at the URL pattern below
+useServerThumbs = false;
+private serverThumbUrl(slideId: string): string {
+  // Example pattern - change if/when your backend has a real endpoint
+  return `http://localhost:8080/slide/thumb/${slideId}`;
+}
+
+// Get a thumbnail src; triggers lazy generation if needed (when useServerThumbs=false)
+thumbSrcFor(slideId: string): string | null {
+  if (this.useServerThumbs) {
+    return this.serverThumbUrl(slideId);
+  }
+  const t = this.thumbs()[slideId];
+  if (!t) { void this.ensureLocalThumb(slideId); return null; }
+  return t;
+}
+
+private async ensureLocalThumb(slideId: string): Promise<void> {
+  if (!slideId || this.thumbs()[slideId] || this.thumbInFlight.has(slideId)) return;
+  this.thumbInFlight.add(slideId);
+  try {
+    const blob = await this.slideSvc.getSlideImageBlob(slideId);
+    const bmp  = await createImageBitmap(blob);
+
+    // Fit to a 120x90 box (same sizes as rail)
+    const maxW = 120, maxH = 90;
+    const scale = Math.min(maxW / bmp.width, maxH / bmp.height, 1);
+    const w = Math.max(1, Math.round(bmp.width * scale));
+    const h = Math.max(1, Math.round(bmp.height * scale));
+
+    const cvs = document.createElement('canvas');
+    cvs.width = w; cvs.height = h;
+    const ctx = cvs.getContext('2d', { alpha: false })!;
+    ctx.drawImage(bmp, 0, 0, w, h);
+    try { (bmp as any).close?.(); } catch {}
+
+    const dataUrl = cvs.toDataURL('image/jpeg', 0.8);
+    const next = { ...this.thumbs() };
+    next[slideId] = dataUrl;
+    this.thumbs.set(next);
+  } catch {
+    // ignore: cell keeps showing skeleton
+  } finally {
+    this.thumbInFlight.delete(slideId);
+  }
+}
+
+
+// --- ImageBitmap LRU (very small) ---
+private readonly LRU_CAPACITY = 5;
+private bmpLRU = new Map<string, ImageBitmap>();
+
+private getCachedBitmap(id: string): ImageBitmap | null {
+  const e = this.bmpLRU.get(id);
+  if (!e) return null;
+  this.bmpLRU.delete(id);          // mark as MRU
+  this.bmpLRU.set(id, e);
+  return e;
+}
+private putCachedBitmap(id: string, bmp: ImageBitmap) {
+  if (this.bmpLRU.has(id)) this.bmpLRU.delete(id);
+  this.bmpLRU.set(id, bmp);
+  while (this.bmpLRU.size > this.LRU_CAPACITY) {
+    const k = this.bmpLRU.keys().next().value as string;
+    const victim = this.bmpLRU.get(k);
+    this.bmpLRU.delete(k);
+    try { (victim as any)?.close?.(); } catch {}
+  }
+}
+
+private async prefetchNeighbors(index: number) {
+  if (index < 0) return;
+  const list = this.slides();
+  const ids: string[] = [];
+  if (index + 1 < list.length) ids.push(list[index + 1].id);
+  if (index - 1 >= 0)          ids.push(list[index - 1].id);
+
+  for (const id of ids) {
+    if (this.getCachedBitmap(id)) continue;
+    try {
+      const blob = await this.slideSvc.getSlideImageBlob(id);
+      const bmp  = await createImageBitmap(blob);
+      this.putCachedBitmap(id, bmp);
+      // (optional) also seed a thumbnail if you want (below we keep thumbs separate)
+    } catch { /* ignore */ }
+  }
+}
+
+
 }

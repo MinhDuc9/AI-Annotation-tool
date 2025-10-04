@@ -6,7 +6,7 @@
   <!-- Right drawer -->
   <mat-sidenav position="end" mode="side" [(opened)]="sidenavOpen" class="ann-sidenav">
 
-    <mat-tab-group>
+    <mat-tab-group class="sidebar-tabs">
       <!-- TAB: Annotations (your existing sidebar UI, unchanged content) -->
       <mat-tab label="Annotations">
         <div class="sidenav-header">
@@ -272,6 +272,24 @@
         </div>
       </mat-tab>
 
+  <mat-tab label="Slides">
+    <div class="side-section thumbs">
+      <div class="thumbs-viewport">
+        <cdk-virtual-scroll-viewport
+          class="vport"
+          [itemSize]="138"
+          [minBufferPx]="400"
+          [maxBufferPx]="800">
+          <div class="thumb-row" *cdkVirtualFor="let s of slides(); trackBy: trackSlideId">
+            <button class="thumb" (click)="goToSlide(s.id)" [class.active]="s.id === currentSlideId()" matRipple>
+              @if (thumbSrcFor(s.id); as src) { <img [src]="src" alt="" /> } @else { <div class="thumb-skeleton"></div> }
+              <div class="thumb-caption">Slide {{ s.index + 1 }}</div>
+            </button>
+          </div>
+        </cdk-virtual-scroll-viewport>
+      </div>
+    </div>
+  </mat-tab>
       <!-- TAB: Comments (NEW) -->
       <mat-tab label="Comments">
         <div class="sidenav-header">
@@ -287,7 +305,7 @@
           <div class="field">
             <label>Slide ID</label>
             <mat-form-field appearance="outline" style="width:100%">
-              <input matInput placeholder="abc548a0-..." [value]="currentSlideId()" (input)="onSlideIdInput($event)" />
+              <input matInput placeholder="abc548a0-..." [value]="currentCommentSlideId()" (input)="onSlideIdInput($event)" />
             </mat-form-field>
             <div class="row gap">
               <button mat-raised-button color="primary" (click)="connectToSlide()"

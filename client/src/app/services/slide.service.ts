@@ -2,6 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { ProjectResponseDTO } from './project.service';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { AuthService } from './Auth.service';
+import { firstValueFrom } from 'rxjs';
 
 export interface CreateSlideDTO {
   id: string;
@@ -91,6 +92,23 @@ export class SlideService {
     const token = this.auth.getToken();
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
     return this.http.delete('http://localhost:8080/slide/' + slideId, {headers: header});
+  }
+
+   /**
+   * Promise wrapper over getSlides(projectId).
+   * Returns just the slide IDs (and projectId) in the same order the API gives.
+   */
+  async listSlidesPromise(projectId: string): Promise<{ id: string; projectId: string; imageRoute?: string }[]> {
+    const res = await firstValueFrom(this.getSlides(projectId)); // UpdateSlideDTO[]
+    return res.map(s => ({ id: s.id, projectId: s.projectId, imageRoute: (s as any).imageRoute }));
+  }
+
+  /**
+   * Promise wrapper over getImage(slideId) that returns a Blob body.
+   */
+  async getSlideImageBlob(slideId: string): Promise<Blob> {
+    const httpRes = await firstValueFrom(this.getImage(slideId)); // HttpResponse<Blob>
+    return httpRes.body as Blob;
   }
 }
 

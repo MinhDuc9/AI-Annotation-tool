@@ -560,3 +560,77 @@ label {
   width: 24px;
   height: 24px;
 }
+
+/* Slides tab container (keep this exact class that exists in your template) */
+.side-section.thumbs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0; /* allows children to grow/shrink */
+}
+
+/* Wrapper that lets the virtual viewport get a real height */
+.thumbs-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+/* Virtual scroll viewport */
+.vport {
+  height: 100%;
+  width: 100%;
+}
+
+/* One row item inside cdkVirtualFor */
+.thumb-row {
+  padding: 6px 4px;
+}
+
+/* Thumbnail card (scoped strictly under .thumbs to avoid bleed) */
+.thumbs .thumb {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.thumbs .thumb.active {
+  border-color: var(--mdc-theme-primary, #3f51b5);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mdc-theme-primary, #3f51b5) 35%, transparent);
+}
+
+/* Image / skeleton box */
+.thumbs .thumb img,
+.thumbs .thumb .thumb-skeleton {
+  display: block;
+  width: 120px;
+  height: 90px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #2a2a2a;
+  margin: 0 auto;
+}
+
+/* Loading shimmer */
+.thumbs .thumb-skeleton {
+  background: linear-gradient(90deg, #2a2a2a, #383838, #2a2a2a);
+  background-size: 200% 100%;
+  animation: thumbShimmer 1.2s linear infinite;
+}
+@keyframes thumbShimmer {
+  0%   { background-position: 0 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Caption */
+.thumbs .thumb-caption {
+  font-size: 12px;
+  opacity: 0.85;
+  text-align: center;
+}
