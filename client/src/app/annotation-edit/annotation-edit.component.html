@@ -290,73 +290,59 @@
       </div>
     </div>
   </mat-tab>
-      <!-- TAB: Comments (NEW) -->
-      <mat-tab label="Comments">
-        <div class="sidenav-header">
-          <h3>Comments</h3>
-          <div class="spacer"></div>
-          <button mat-icon-button (click)="sidenavOpen = false" matTooltip="Close">
-            <mat-icon>chevron_right</mat-icon>
-          </button>
-        </div>
+      <!-- TAB: Comments (UPDATED) -->
+<mat-tab label="Comments">
+  <div class="sidenav-header">
+    <h3>Comments</h3>
+    <div class="spacer"></div>
+    <button mat-icon-button (click)="sidenavOpen = false" matTooltip="Close">
+      <mat-icon>chevron_right</mat-icon>
+    </button>
+  </div>
 
-        <!-- Connection bar (enter slide id & connect) -->
-        <div class="side-section">
-          <div class="field">
-            <label>Slide ID</label>
-            <mat-form-field appearance="outline" style="width:100%">
-              <input matInput placeholder="abc548a0-..." [value]="currentCommentSlideId()" (input)="onSlideIdInput($event)" />
-            </mat-form-field>
-            <div class="row gap">
-              <button mat-raised-button color="primary" (click)="connectToSlide()"
-                [disabled]="isConnected()">Connect</button>
-              <button mat-stroked-button color="warn" (click)="disconnectFromSlide()"
-                [disabled]="!isConnected()">Disconnect</button>
+  <!-- Input at the top (newest-first stream) -->
+  <div class="side-section">
+    <mat-form-field appearance="outline" style="width:100%">
+      <textarea
+        matInput
+        rows="3"
+        placeholder="Write a comment and press Enter..."
+        [value]="newComment()"
+        (input)="onNewCommentInput($event)"
+        (keydown.enter)="addComment(); $event.preventDefault()">
+      </textarea>
+    </mat-form-field>
+    <button mat-raised-button color="primary"
+            (click)="addComment()"
+            [disabled]="!newComment().trim() || !isConnected()">
+      Send
+    </button>
+  </div>
+
+  <h4 class="section">All Comments</h4>
+
+  <!-- Newest -> oldest; starts at top naturally -->
+  <div class="comments-list">
+    @if (comments().length === 0) {
+      <div class="empty">No comments yet</div>
+    } @else {
+      @for (c of comments(); track c.id) {
+        <div class="comment-card mat-elevation-z2">
+          <img mat-card-avatar [src]="avatarUrl(c.userId)" alt="{{ commentAuthor(c) }} avatar">
+          <div class="comment-content">
+            <div class="comment-meta">
+              <b>{{ commentAuthor(c) }}</b>
+              <span class="dot">&middot;</span>
+              <span title="{{ c.createdAt | date:'medium' }}">{{ c.createdAt | date:'short' }}</span>
             </div>
-          </div>
-          <div class="field">
-            <label>Posting as</label>
-            <mat-form-field appearance="outline" style="width:100%">
-              <input matInput placeholder="User ID" [value]="userId()" (input)="onUserIdInput($event)" />
-
-            </mat-form-field>
+            <div class="comment-body">{{ c.content }}</div>
           </div>
         </div>
+      }
+    }
+  </div>
+</mat-tab>
 
-        <h4 class="section">All Comments</h4>
-        <div class="comments-list">
-          @if (comments().length === 0) {
-          <div class="empty">No comments yet</div>
-          } @else {
-          @for (c of comments(); track c.id) {
-          <div class="comment-card mat-elevation-z2">
-            <img mat-card-avatar [src]="avatarUrl(c.userId)" alt="{{ c.userId }} avatar">
-            <div class="comment-content">
-              <div class="comment-meta">
-                <b>{{ c.userId }}</b>
-                <span class="dot">&middot;</span>
-                <span title="{{ c.createdAt | date:'medium' }}">{{ c.createdAt | date:'short' }}</span>
-              </div>
-              <div class="comment-body">{{ c.content }}</div>
-            </div>
-          </div>
-          }
-          }
-        </div>
-
-        <mat-divider></mat-divider>
-
-        <div class="side-section">
-          <mat-form-field appearance="outline" style="width:100%">
-            <textarea matInput rows="3" placeholder="Write a comment and press Enter..." [value]="newComment()"
-              (input)="onNewCommentInput($event)" (keydown.enter)="addComment(); $event.preventDefault()">
-</textarea>
-
-          </mat-form-field>
-          <button mat-raised-button color="primary" (click)="addComment()"
-            [disabled]="!isConnected() || !newComment().trim()">Send</button>
-        </div>
-      </mat-tab>
     </mat-tab-group>
 
   </mat-sidenav>
