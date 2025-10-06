@@ -62,6 +62,7 @@ export interface BoundingBoxDTO {
 }
 export interface BoundingBoxDeletedDTO {
   boundingBoxId: string;
+  slideId?: string;
 }
 export type BoundingBoxUpdate = Partial<
   Pick<BoundingBoxDTO, 'x_pos' | 'y_pos' | 'x_long' | 'y_long' | 'color' | 'category'>
@@ -95,6 +96,7 @@ export interface SkeletalDTO {
 }
 export interface SkeletalDeletedDTO {
   skeletalId: string;
+  slideId?: string;
 }
 export type SkeletalUpdate = {
   x_pos?: number;
@@ -194,8 +196,8 @@ export class SocketService {
 
   // CRUD
   createBoundingBox(slideId: string, dto: BoundingBoxCreatePayload): void {
-    const { x_pos, y_pos, x_long, y_long, color, category } = dto;
-    this.socket.emit('createBoundingBox', { slideId, x_pos, y_pos, x_long, y_long, color, category });
+    const { x_pos, y_pos, x_long, y_long, color, category, clientTempId } = dto;
+    this.socket.emit('createBoundingBox', { slideId, x_pos, y_pos, x_long, y_long, color, category, clientTempId });
   }
   updateBoundingBox(slideId: string, boundingBoxId: string, patch: BoundingBoxUpdate): void {
     console.log('updateBoundingBox', { slideId, boundingBoxId, ...patch });
@@ -233,8 +235,8 @@ export class SocketService {
 
   // CRUD
   createSkeletal(slideId: string, dto: SkeletalCreatePayload): void {
-    const { x_pos, y_pos, key_points, color, category } = dto;
-    this.socket.emit('createSkeletal', { slideId, x_pos, y_pos, key_points: key_points ?? null, color, category });
+    const { x_pos, y_pos, key_points, color, category, clientTempId } = dto;
+    this.socket.emit('createSkeletal', { slideId, x_pos, y_pos, key_points: key_points ?? null, color, category, clientTempId });
   }
   updateSkeletal(slideId: string, skeletalId: string, patch: SkeletalUpdate): void {
     this.socket.emit('updateState', { slideId, skeletalId, ...patch });

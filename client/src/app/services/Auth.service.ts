@@ -1,6 +1,8 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { jwtDecode } from 'jwt-decode';
+import { jwtDecode, JwtPayload } from 'jwt-decode';
+
+type MyClaims = JwtPayload & { id?: string; email?: string };
 
 @Injectable({
     providedIn: 'root',
@@ -38,7 +40,9 @@ export class AuthService {
 
     getUserId(): string | null {
         try {
-            return jwtDecode(this.getToken()!).sub!;
+            const token = this.getToken();
+            if (!token) return null;
+            return jwtDecode<MyClaims>(token).id ?? null;
         } catch (Error) {
             console.error('Error decoding token:', Error);
             return null;
