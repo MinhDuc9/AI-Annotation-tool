@@ -38,12 +38,17 @@ import {
     SocketService,
 } from '../services/socket.service';
 import { AuthService } from '../services/Auth.service';
-import { map, distinctUntilChanged, Observable } from 'rxjs';
+import { map, distinctUntilChanged, Observable, firstValueFrom } from 'rxjs';
 import { AnnotationTopbarComponent } from '../annotation-topbar/annotation-topbar.component';
 import { ActivatedRoute, Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { ProjectService, ProjectUser } from '../services/project.service';
+import {
+    AnnotationService,
+    BoundingBoxDTO as AnnotationBoundingBoxDTO,
+    SkeletalDTO as AnnotationSkeletalDTO,
+} from '../services/annotation.service';
 
 /* ---------------- Data models (image space) ---------------- */
 export type Id = number;
@@ -203,6 +208,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     // SIMPLE per-slide stores (no caching/LRU)
     private boxesBySlide = new Map<string, BoxAnn[]>();
     private skeletonsBySlide = new Map<string, SkeletonAnn[]>();
+    private annotationsLoading = new Map<string, Promise<void>>();
 
     // Keep last slide to persist on switch
     private lastSlideId: string | null = null;
@@ -237,6 +243,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
             // On slide change: persist outgoing, restore incoming, then load image
             effect(() => {
+                const pid = this.projectId();
                 const id = this.currentSlideId();
                 if (!id) return;
 
@@ -248,6 +255,8 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 const idx = this.currentIndex(); // compute index after we know the id
                 if (idx >= 0) void this.prefetchNeighbors(idx); // warm next/prev decodes
                 this.lastSlideId = id;
+
+                if (pid) void this.loadAnnotationsForSlide(pid, id);
             });
 
             // Keep per-slide stores in sync as you edit (cheap, no LRU)
@@ -860,6 +869,48 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         // Let onload handle sizes/paint as you already do
         this.imgLoaded.set(false);
         this.img.src = url;
+    }
+
+    private async loadAnnotationsForSlide(projectId: string, slideId: string) {
+        if (!projectId || !slideId) return;
+
+        const existing = this.annotationsLoading.get(slideId);
+        if (existing) return existing;
+
+        const loadPromise = (async () => {
+            try {
+                const [boxes, skeletals] = await Promise.all([
+                    firstValueFrom(
+                        this.annotationSvc.getAllBoundingBox(projectId, slideId)
+                    ),
+                    firstValueFrom(
+                        this.annotationSvc.getAllSkeletal(projectId, slideId)
+                    ),
+                ]);
+
+                if (this.currentSlideId() !== slideId) return;
+
+                this.clearIdMapsForSlide(slideId);
+                this.clearPointMapsForSlide(slideId);
+
+                this.seedBoxesFromServer(slideId, boxes ?? []);
+                this.seedSkeletalsFromServer(slideId, skeletals ?? []);
+
+                this.selection.set({ type: null, id: null });
+                this.requestPaint?.();
+                this.updateScreenLabels?.();
+            } catch (err) {
+                console.error(err);
+                this.snack.open('Failed to load annotations', undefined, {
+                    duration: 2000,
+                });
+            } finally {
+                this.annotationsLoading.delete(slideId);
+            }
+        })();
+
+        this.annotationsLoading.set(slideId, loadPromise);
+        return loadPromise;
     }
 
     private persistCurrentSlideState(slideId: string) {
@@ -3079,6 +3130,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     }
 
     /* ---------- Comments tab state (unchanged, with handlers) ---------- */
+    private annotationSvc = inject(AnnotationService);
     private slideSvc = inject(SlideService);
     private socket = inject(SocketService);
     private auth = inject(AuthService);
@@ -3601,21 +3653,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     /** Call when we first load server annotations for a slide (if/when you fetch them). */
     private seedBoxesFromServer(
         slideId: string,
-        serverBoxes: Array<{
-            id: string;
-            x_pos: number;
-            y_pos: number;
-            x_long: number;
-            y_long: number;
-            color: string;
-            category: string;
-        }>
+        serverBoxes: AnnotationBoundingBoxDTO[]
     ) {
+        this.pendingBoxes.delete(slideId);
         const l2s = this.getPair(this.boxLocalToServer, slideId);
+        l2s.clear();
         const s2l = this.getPair(this.boxServerToLocal, slideId);
+        s2l.clear();
         const ui: BoxAnn[] = [];
 
-        for (const srv of serverBoxes) {
+        for (const srv of serverBoxes ?? []) {
             const localId = this.idSeq++;
             l2s.set(localId, srv.id);
             s2l.set(srv.id, localId);
@@ -3630,6 +3677,122 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             });
         }
         this.boxes.set(ui);
+    }
+
+    private seedSkeletalsFromServer(
+        slideId: string,
+        serverPoints: AnnotationSkeletalDTO[]
+    ) {
+        this.pendingPoints.delete(slideId);
+
+        const l2s = this.getPointL2S(slideId);
+        l2s.clear();
+        const s2l = this.getPointS2L(slideId);
+        s2l.clear();
+
+        const dtoById = new Map<string, AnnotationSkeletalDTO>();
+        for (const dto of serverPoints ?? []) {
+            if (!dto?.id) continue;
+            dtoById.set(dto.id, dto);
+        }
+
+        if (dtoById.size === 0) {
+            this.skeletons.set([]);
+            return;
+        }
+
+        const adjacency = new Map<string, Set<string>>();
+        for (const id of dtoById.keys()) {
+            adjacency.set(id, new Set());
+        }
+        for (const dto of dtoById.values()) {
+            const neighbors = Array.isArray(dto.key_points)
+                ? dto.key_points
+                : [];
+            const set = adjacency.get(dto.id);
+            if (!set) continue;
+            for (const neighborId of neighbors) {
+                if (!dtoById.has(neighborId)) continue;
+                set.add(neighborId);
+                adjacency.get(neighborId)?.add(dto.id);
+            }
+        }
+
+        const visited = new Set<string>();
+        const skeletons: SkeletonAnn[] = [];
+
+        for (const startId of dtoById.keys()) {
+            if (visited.has(startId)) continue;
+
+            const stack = [startId];
+            const component: string[] = [];
+
+            while (stack.length) {
+                const current = stack.pop()!;
+                if (visited.has(current)) continue;
+                visited.add(current);
+                component.push(current);
+                for (const neighbor of adjacency.get(current) ?? []) {
+                    if (!visited.has(neighbor)) stack.push(neighbor);
+                }
+            }
+
+            if (!component.length) continue;
+
+            const componentSet = new Set<string>(component);
+            const localSkId = this.idSeq++;
+            const points: Record<string, Keypoint> = {};
+            const serverToLocal = new Map<string, string>();
+            let skColor: string | null = null;
+            let skLabel: string | null = null;
+
+            for (const serverId of component) {
+                const dto = dtoById.get(serverId);
+                if (!dto) continue;
+                const pid = 'p' + this.pointSeq++;
+                const labelId = dto.category || this.activeSkelLabelId();
+                points[pid] = {
+                    id: pid,
+                    x: dto.x_pos ?? 0,
+                    y: dto.y_pos ?? 0,
+                    v: 2,
+                    labelId,
+                };
+                serverToLocal.set(serverId, pid);
+                this.linkPointIds(slideId, localSkId, pid, serverId);
+                if (!skColor && dto.color) skColor = dto.color;
+                if (!skLabel && dto.category) skLabel = dto.category;
+            }
+
+            const edges: [string, string][] = [];
+            const seenEdges = new Set<string>();
+            for (const serverId of component) {
+                const fromPid = serverToLocal.get(serverId);
+                if (!fromPid) continue;
+                for (const neighbor of adjacency.get(serverId) ?? []) {
+                    if (!componentSet.has(neighbor)) continue;
+                    const toPid = serverToLocal.get(neighbor);
+                    if (!toPid) continue;
+                    const key =
+                        fromPid < toPid
+                            ? `${fromPid}|${toPid}`
+                            : `${toPid}|${fromPid}`;
+                    if (seenEdges.has(key)) continue;
+                    seenEdges.add(key);
+                    edges.push([fromPid, toPid]);
+                }
+            }
+
+            skeletons.push({
+                id: localSkId,
+                color: skColor ?? this.activeSkelColor(),
+                labelId: skLabel ?? this.activeSkelLabelId(),
+                points,
+                edges,
+            });
+        }
+
+        this.skeletons.set(skeletons);
     }
 
     /** When changing slides, also clear the id maps (we rebuild on restore/seed). */
@@ -3861,10 +4024,4 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         });
     }
 }
-
-
-
-
-
-
 
