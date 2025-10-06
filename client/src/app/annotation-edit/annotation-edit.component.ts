@@ -570,6 +570,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                         };
                                     })
                                 );
+                                this.syncServerEdgesForPoint(sid, pendingMatch.skId, pendingMatch.pid);
                                 this.requestPaint();
                                 return;
                             }
@@ -2507,7 +2508,18 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     if (this.isBoxLockedForMe(hitBorder.id)) return;
 
                     this.selection.set({ type: 'box', id: hitBorder.id });
-                    // (no drag yet)
+                    draggingBoxId = hitBorder.id as Id;
+                    lastImg = pImg;
+
+                    const sid = this.currentSlideId();
+                    const uid = this.me();
+                    if (sid && uid)
+                        this.socket.boxTouch({
+                            slideId: sid,
+                            userId: uid,
+                            boxId: draggingBoxId,
+                        });
+
                     ctx.requestPaint();
                     return;
                 }
@@ -2768,18 +2780,13 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             ); // see note below
                             if (srvPointId) {
                                 const p = sk.points[pid];
-                                const key_points = this.computeKeyPoints(
-                                    sk,
-                                    pid
-                                );
+                                const neighborIds = this.serverNeighborIds(sid, sk, pid);
                                 this.socket.updateSkeletal(sid, srvPointId, {
                                     x_pos: p.x,
                                     y_pos: p.y,
                                     color: sk.color,
                                     category: sk.labelId, // DB calls it 'category'
-                                    key_points: key_points.length
-                                        ? key_points
-                                        : null,
+                                    key_points: neighborIds.length ? neighborIds : null,
                                 });
                             }
                         }
@@ -3838,16 +3845,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         };
     }
 
-    /** Build the key_points list (connected point ids) for a given point id from a SkeletonAnn */
-    private computeKeyPoints(sk: SkeletonAnn, pid: string): string[] {
-        const res: string[] = [];
-        for (const [a, b] of sk.edges) {
-            if (a === pid && sk.points[b]) res.push(b);
-            else if (b === pid && sk.points[a]) res.push(a);
-        }
-        return res;
-    }
-
     private pLocKey(skLocalId: number, pid: string) {
         return `${skLocalId}:${pid}`;
     }
@@ -3944,6 +3941,24 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         this.pendingPoints.get(slideId)?.delete(this.pLocKey(skId, pid));
     }
 
+    private syncServerEdgesForPoint(slideId: string | null, skLocalId: number, pid: string) {
+        if (!slideId || slideId !== this.currentSlideId()) return;
+        const sk = this.skeletons().find((s) => s.id === skLocalId);
+        if (!sk) return;
+        const srvId = this.serverPointId(slideId, skLocalId, pid);
+        if (!srvId) return;
+
+        const connected = sk.edges.filter(([a, b]) => a === pid || b === pid);
+        if (connected.length === 0) {
+            this.socket.updateSkeletal(slideId, srvId, { key_points: null });
+            return;
+        }
+
+        for (const [a, b] of connected) {
+            this.emitEdgeSync(sk, a, b);
+        }
+    }
+
     private serverNeighborIds(sid: string, sk: SkeletonAnn, pid: string): string[] {
         const neighbours: string[] = [];
         const seen = new Set<string>();
@@ -4024,4 +4039,3 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         });
     }
 }
-
