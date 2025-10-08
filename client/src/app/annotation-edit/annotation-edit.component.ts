@@ -78,6 +78,11 @@ import {
     takePendingBoxMatch,
     takePendingPointMatch,
 } from './annotation-edit.mapping-utils';
+import {
+    mapDtoToComment,
+    mapSocketToComment,
+    PendingCommentTracker,
+} from './annotation-edit.comment-utils';
 
 @Component({
     selector: 'app-annotation-edit',
@@ -260,7 +265,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 this.slideSvc.getComments(sid).subscribe({
                     next: (dto) => {
                         const mapped = (dto?.comments ?? []).map(
-                            this.mapDtoToModel
+                            mapDtoToComment
                         );
                         mapped.sort(
                             (a, b) =>
@@ -3111,7 +3116,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         const current = this.currentSlideId();
         if (!c.slideId || c.slideId !== current) return;
 
-        const incoming = this.mapSocketToModel(c);
+        const incoming = mapSocketToComment(c);
         const pendingKey = `${incoming.userId}|${incoming.content.trim()}`;
 
         this.comments.update((arr) => {
@@ -3119,7 +3124,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             if (arr.some((x) => x.id === incoming.id)) return arr;
 
             // Only replace if we still have a pending record for this key
-            const canReplace = this.consumePending(current!, pendingKey);
+            const canReplace = this.pendingTracker.consume(current!, pendingKey);
 
             if (canReplace) {
                 // Find the optimistic candidate: same user/content and marked pending
@@ -3146,6 +3151,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     private socketSubs: Array<() => void> = [];
     private pendingOptimistic: Array<{ userId: string; content: string }> = [];
+    private pendingTracker = new PendingCommentTracker();
     private uuidRegex =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -3153,6 +3159,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         this.disposeSocketHandlers();
         this.socket.disconnect();
         this.pendingOptimistic = [];
+        this.pendingTracker.clear();
         this.isConnected.set(false);
     }
 
@@ -3169,31 +3176,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         return () => sub.unsubscribe();
     }
 
-    private mapDtoToModel = (c: slideCommentDTO): CommentModel => ({
-        id: c.id,
-        slideId: c.slideId,
-        userId: c.userId,
-        content: c.content,
-        createdAt: new Date(c.createdAt),
-        updatedAt: new Date(c.updatedAt),
-    });
-
-    private mapSocketToModel(c: SocketCommentDTO): CommentModel {
-        const created = c.createdAt ? new Date(c.createdAt) : new Date();
-        const updated = c.updatedAt ? new Date(c.updatedAt) : created;
-        return {
-            id: c.id,
-            slideId: c.slideId,
-            userId: (c.userId ?? '').trim(),
-            content: c.content,
-            createdAt: Number.isNaN(created.getTime()) ? new Date() : created,
-            updatedAt: Number.isNaN(updated.getTime()) ? created : updated,
-        };
-    }
-
     private applyIncomingCreate(c: SocketCommentDTO) {
         if (!this.isForCurrentSlide(c.slideId)) return;
-        const incoming = this.mapSocketToModel(c);
+        const incoming = mapSocketToComment(c);
         let matchedPending = false;
         this.comments.update((arr) => {
             const idx = arr.findIndex(
@@ -3226,7 +3211,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     private applyIncomingUpdate(c: SocketCommentDTO) {
         if (!this.isForCurrentSlide(c.slideId)) return;
-        const incoming = this.mapSocketToModel(c);
+        const incoming = mapSocketToComment(c);
         this.comments.update((arr) => {
             const idx = arr.findIndex((x) => x.id === incoming.id);
             if (idx === -1) return arr;
@@ -3298,7 +3283,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         };
 
         this.comments.update((arr) => [optimistic, ...arr]); // newest-first
-        this.addPending(slideId, pendingKey);
+        this.pendingTracker.add(slideId, pendingKey);
 
         this.socket.createComment(slideId, uid, content);
         this.newComment.set('');
@@ -3307,33 +3292,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     commentAuthor(c: CommentModel): string {
         return this.displayNameFor(c.userId);
     }
-    /** Track optimistic comments so we can replace them when the server echo arrives */
-    private readonly pendingCommentWindowMs = 5000;
-    private pendingComments = new Map<
-        string, // slideId
-        Array<{ key: string; at: number }> // keys of optimistic items
-    >();
-
-    /** Create + store a pending key for an optimistic comment */
-    private addPending(slideId: string, key: string) {
-        const arr = this.pendingComments.get(slideId) ?? [];
-        arr.push({ key, at: Date.now() });
-        // drop old
-        const cut = Date.now() - this.pendingCommentWindowMs;
-        const fresh = arr.filter((p) => p.at >= cut);
-        this.pendingComments.set(slideId, fresh);
-    }
-
-    /** Try to consume (find & remove) a pending key */
-    private consumePending(slideId: string, key: string): boolean {
-        const arr = this.pendingComments.get(slideId);
-        if (!arr?.length) return false;
-        const i = arr.findIndex((p) => p.key === key);
-        if (i === -1) return false;
-        arr.splice(i, 1);
-        return true;
-    }
-
     avatarUrl(userId: string): string {
         const initial = (
             this.displayNameFor(userId)?.trim()?.[0] ?? '?'
