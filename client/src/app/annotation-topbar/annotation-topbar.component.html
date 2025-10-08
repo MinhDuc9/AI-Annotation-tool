@@ -1,0 +1,68 @@
+<!-- src/app/annotation-edit/topbar/annotation-topbar.component.html -->
+<mat-toolbar class="topbar" color="surface">
+  <!-- far-left back -->
+  <button mat-icon-button aria-label="Back to home" (click)="goBack()">
+    <mat-icon>arrow_back</mat-icon>
+  </button>
+
+  <!-- push everything to right -->
+  <span class="flex-spacer"></span>
+
+  <!-- undo / redo -->
+  <button mat-icon-button aria-label="Undo" (click)="undoClicked()" [disabled]="!canUndo()" matTooltip="Undo (Ctrl/Cmd+Z)">
+    <mat-icon>undo</mat-icon>
+  </button>
+
+  <button mat-icon-button aria-label="Redo" (click)="redoClicked()" [disabled]="!canRedo()" matTooltip="Redo (Ctrl/Cmd+Shift+Z)">
+    <mat-icon>redo</mat-icon>
+  </button>
+
+  <!-- collaborator avatars -->
+  <div class="avatar-group" role="group" aria-label="Collaborators">
+    @for (user of visibleCollaborators(); track user.id) {
+      <div class="avatar" matTooltip="{{ user.name }}">
+        <ng-container>
+            @if (user.avatarUrl) {
+            <img class="avatar-img" src="{{ user.avatarUrl }}" alt="{{ user.name }}" />
+            } @else {
+            <span class="avatar-initials">{{ initials(user.name) }}</span>
+            }
+        </ng-container>
+        <span class="presence" [class.online]="user.online"></span>
+      </div>
+    }
+
+    @if (extraCount() > 0) {
+      <button mat-button class="more-btn" [matMenuTriggerFor]="collabMenu">+{{ extraCount() }}</button>
+
+      <mat-menu #collabMenu="matMenu">
+        @for (u of collaborators(); track u.id) {
+          <button mat-menu-item>
+            <div class="menu-avatar">{{ initials(u.name) }}</div>
+            <div class="menu-labels">
+              <div class="name">{{ u.name }}</div>
+              <div class="email">{{ u.email }}</div>
+            </div>
+            <mat-icon class="status" *ngIf="u.online">circle</mat-icon>
+          </button>
+        }
+      </mat-menu>
+    }
+  </div>
+
+  <!-- share -->
+  <button mat-stroked-button class="share-btn" (click)="openShare()">
+    <mat-icon>share</mat-icon> <span class="hide-on-small">Share</span>
+  </button>
+
+  <!-- account -->
+  <button mat-icon-button [matMenuTriggerFor]="accountMenu" aria-label="Account menu">
+    <mat-icon>account_circle</mat-icon>
+  </button>
+  <mat-menu #accountMenu="matMenu">
+    <button mat-menu-item>Profile</button>
+    <button mat-menu-item>Settings</button>
+    <mat-divider></mat-divider>
+    <button mat-menu-item>Sign out</button>
+  </mat-menu>
+</mat-toolbar>

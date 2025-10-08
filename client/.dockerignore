@@ -1,3 +1,22 @@
+# Ignore big/ephemeral stuff
+node_modules
+**/node_modules
+.pnpm-store
+**/.pnpm-store
+dist
+build
+.tmp
+.cache
+.next
+out
+
+# VCS
+.git
+.gitignore
+
+# OS/editor junk
+.DS_Store
+*.log
 node_modules
 .pnpm-store
 .angular
