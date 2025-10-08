@@ -1259,6 +1259,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         );
         this.requestPaint();
         this.updateScreenLabels();
+        this.emitBoxState(s.id);
     }
     onSelectedColorInput(e: Event) {
         const value = (e.target as HTMLInputElement)?.value;
@@ -1269,6 +1270,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         );
         this.requestPaint();
         this.updateScreenLabels();
+        this.emitBoxState(s.id);
     }
 
     /* ---------- Sidebar bindings for SKELETON/POINT ---------- */
@@ -1284,11 +1286,13 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 arr.map((sk) => (sk.id === s.id ? { ...sk, color: value } : sk))
             );
             this.requestPaint();
+            this.emitSkeletonAppearanceFor(s.id);
         } else if (s.type === 'point' && s.id != null) {
             this.skeletons.update((arr) =>
                 arr.map((sk) => (sk.id === s.id ? { ...sk, color: value } : sk))
             );
             this.requestPaint();
+            this.emitSkeletonAppearanceFor(s.id);
         }
     }
 
@@ -1302,23 +1306,20 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     }
 
     onActiveSkelColorInput(e: Event) {
-        this.activeSkelColor.set(
-            (e.target as HTMLInputElement)?.value ?? this.activeSkelColor()
-        );
+        const newColor =
+            (e.target as HTMLInputElement)?.value ?? this.activeSkelColor();
+        this.activeSkelColor.set(newColor);
         const sid = this.currentSlideId();
         const skId = this.getTargetSkeletonId();
         if (sid && skId != null) {
             const sk = this.skeletons().find((s) => s.id === skId);
             if (sk) {
-                for (const pid of Object.keys(sk.points)) {
-                    const srv = serverPointId(this.pointLocalToServer, sid, sk.id, pid);
-                    if (srv) {
-                        this.socket.updateSkeletal(sid, srv, {
-                            color: sk.color,
-                            category: sk.labelId,
-                        });
-                    }
-                }
+                this.skeletons.update((arr) =>
+                    arr.map((item) =>
+                        item.id === skId ? { ...item, color: newColor } : item
+                    )
+                );
+                this.emitSkeletonAppearanceFor(skId);
             }
         }
     }
@@ -3042,13 +3043,41 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     /* ---------- Delete behavior ---------- */
     private deleteCurrentSelection() {
         const s = this.selection();
+        const sid = this.currentSlideId();
         if (s.type === 'skeleton' && s.id != null) {
+            if (sid) {
+                const sk = this.skeletons().find((item) => item.id === s.id);
+                if (sk) {
+                    for (const pid of Object.keys(sk.points)) {
+                        const srvId = serverPointId(
+                            this.pointLocalToServer,
+                            sid,
+                            sk.id,
+                            pid
+                        );
+                        if (srvId) this.socket.deleteSkeletal(sid, srvId);
+                        this.unlinkPointId(sid, sk.id, pid);
+                        clearPendingPoint(this.pendingPoints, sid, sk.id, pid);
+                    }
+                }
+            }
             this.skeletons.update((arr) => arr.filter((sk) => sk.id !== s.id));
             this.selection.set({ type: null, id: null });
             this.requestPaint();
             return;
         }
         if (s.type === 'point' && s.id != null) {
+            if (sid) {
+                const srvId = serverPointId(
+                    this.pointLocalToServer,
+                    sid,
+                    s.id,
+                    s.pid
+                );
+                if (srvId) this.socket.deleteSkeletal(sid, srvId);
+                this.unlinkPointId(sid, s.id, s.pid);
+                clearPendingPoint(this.pendingPoints, sid, s.id, s.pid);
+            }
             this.skeletons.update((arr) =>
                 arr
                     .map((sk) => {
@@ -3069,6 +3098,18 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             return;
         }
         if (s.type === 'box' && s.id != null) {
+            if (sid) {
+                const srvId = this.boxServerId(sid, s.id);
+                if (srvId) {
+                    this.socket.deleteBoundingBox(sid, srvId);
+                    getOrCreateNestedMap(
+                        this.boxServerToLocal,
+                        sid
+                    ).delete(srvId);
+                }
+                getOrCreateNestedMap(this.boxLocalToServer, sid).delete(s.id);
+                clearPendingBox(this.pendingBoxes, sid, s.id);
+            }
             this.boxes.update((list) => list.filter((b) => b.id !== s.id));
             this.selection.set({ type: null, id: null });
             this.requestPaint();
@@ -3716,6 +3757,55 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     private clearPointMapsForSlide(slideId: string) {
         this.pointLocalToServer.delete(slideId);
         this.pointServerToLocal.delete(slideId);
+    }
+
+    private unlinkPointId(slideId: string, skLocalId: number, pid: string) {
+        const l2s = this.pointLocalToServer.get(slideId);
+        const s2l = this.pointServerToLocal.get(slideId);
+        if (!l2s) return;
+        const key = pLocKey(skLocalId, pid);
+        const srv = l2s.get(key);
+        if (srv) s2l?.delete(srv);
+        l2s.delete(key);
+    }
+
+    private emitBoxState(localId: Id) {
+        const sid = this.currentSlideId();
+        if (!sid) return;
+        const srvId = this.boxServerId(sid, localId);
+        if (!srvId) return;
+        const box = this.boxes().find((b) => b.id === localId);
+        if (!box) return;
+        this.socket.updateBoundingBox(sid, srvId, {
+            x_pos: box.x,
+            y_pos: box.y,
+            x_long: box.w,
+            y_long: box.h,
+            color: box.color,
+            category: box.labelId,
+        });
+    }
+
+    private emitSkeletonAppearanceFor(skLocalId: number) {
+        const sid = this.currentSlideId();
+        if (!sid) return;
+        const sk = this.skeletons().find((s) => s.id === skLocalId);
+        if (!sk) return;
+        for (const pid of Object.keys(sk.points)) {
+            const srvPointId = serverPointId(
+                this.pointLocalToServer,
+                sid,
+                sk.id,
+                pid
+            );
+            if (!srvPointId) continue;
+            const neighborIds = this.serverNeighborIds(sid, sk, pid);
+            this.socket.updateSkeletal(sid, srvPointId, {
+                color: sk.color,
+                category: sk.labelId,
+                key_points: neighborIds.length ? neighborIds : null,
+            });
+        }
     }
 
     private getTargetSkeletonId(): number | null {
