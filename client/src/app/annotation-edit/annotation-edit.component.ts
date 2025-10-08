@@ -723,7 +723,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         this.socket.onSkeletalDeleted(),
                         (srv: any) => {
                             const sid = this.currentSlideId();
-                            if (!sid || srv?.slideId !== sid) return;
+                            if (!sid) return;
 
                             const loc = localPointOf(this.pointServerToLocal, 
                                 sid,
@@ -1704,7 +1704,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     pointLabelId(): string {
         const sp = this.selectedPoint();
-        return sp?.kp.labelId ?? this.activeLabelId();
+        return sp?.kp.labelId ?? this.activeSkelLabelId();
     }
     onPointLabelChange(newId: string) {
         const s = this.selection();
@@ -2768,7 +2768,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                     x_pos: p.x,
                                     y_pos: p.y,
                                     color: sk.color,
-                                    category: sk.labelId, // DB calls it 'category'
+                                    category: p.labelId,
                                     key_points: neighborIds.length ? neighborIds : null,
                                 });
                             }
@@ -2793,7 +2793,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                     x_pos: p.x,
                                     y_pos: p.y,
                                     color: sk.color,
-                                    category: sk.labelId,
+                                    category: p.labelId,
                                     key_points: neighborIds.length ? neighborIds : null,
                                 });
                             }
