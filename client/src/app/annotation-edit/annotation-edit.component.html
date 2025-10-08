@@ -406,7 +406,7 @@
         }
 
         <!-- Point labels -->
-        @for (pl of pointLabelChips(); track pl; let i = $index) {
+        @for (pl of pointLabelChips(); track pl.id) {
         <div class="label-chip point" [style.left.px]="pl.left" [style.top.px]="pl.top"
           [style.maxWidth.px]="pl.maxWidth" [style.borderColor]="pl.color">
           <span class="text">{{ pl.labelName }}</span>

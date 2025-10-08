@@ -454,23 +454,20 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     this.observe(
                         this.socket.onBoundingBoxDeleted(),
                         (srv: any) => {
-                            if (!srv?.slideId || srv.slideId !== sid) return;
-                            const localId = this.boxLocalId(
-                                sid,
-                                srv.boundingBoxId || srv.id
-                            );
+                            if (!srv) return;
+                            const serverId = srv.boundingBoxId || srv.id;
+                            const localId = this.boxLocalId(sid, serverId);
                             if (localId == null) return;
                             this.boxes.update((arr) =>
                                 arr.filter((b) => b.id !== localId)
                             );
-                            getOrCreateNestedMap(this.boxLocalToServer, sid).delete(
-                                localId
-                            );
-                            if (srv.id)
-                                getOrCreateNestedMap(
-                                    this.boxServerToLocal,
-                                    sid
-                                ).delete(srv.id);
+                            getOrCreateNestedMap(this.boxLocalToServer, sid).delete(localId);
+                            getOrCreateNestedMap(this.boxServerToLocal, sid).delete(serverId);
+                            clearPendingBox(this.pendingBoxes, sid, localId);
+                            const sel = this.selection();
+                            if (sel.type === 'box' && sel.id === localId) {
+                                this.selection.set({ type: null, id: null });
+                            }
                             this.requestPaint();
                             this.updateScreenLabels();
                         }
@@ -619,14 +616,14 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                             : old.y;
 
                                     // propagate color/category to the whole skeleton (see #5)
-                                    const nextColor = srv.color ?? sk.color;
-                                    const nextLabel =
-                                        srv.category ?? sk.labelId;
+                                const nextColor = srv.color ?? sk.color;
+                                const pointLabel =
+                                    srv.category ?? old.labelId;
 
-                                    // rebuild edges around curPid:
-                                    // keep existing edges NOT touching curPid; then add edges to neighbor local pids
-                                    const keep = sk.edges.filter(
-                                        ([a, b]) => a !== curPid && b !== curPid
+                                // rebuild edges around curPid:
+                                // keep existing edges NOT touching curPid; then add edges to neighbor local pids
+                                const keep = sk.edges.filter(
+                                    ([a, b]) => a !== curPid && b !== curPid
                                     );
                                     const add = neighLocals
                                         .filter((n) => n.sk === curSkId) // same skeleton for now
@@ -649,10 +646,15 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                     return {
                                         ...sk,
                                         color: nextColor,
-                                        labelId: nextLabel,
                                         points: {
                                             ...sk.points,
-                                            [curPid]: { ...old, x: nx, y: ny, isPending: false },
+                                            [curPid]: {
+                                                ...old,
+                                                x: nx,
+                                                y: ny,
+                                                labelId: pointLabel,
+                                                isPending: false,
+                                            },
                                         },
                                         edges: [...keep, ...add],
                                     };
@@ -710,6 +712,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             });
 
                             this.requestPaint();
+                            this.updateScreenLabels();
                         }
                     )
                 );
@@ -750,15 +753,29 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                 return next;
                             });
 
-                            // drop point mapping
-                            const l2s = getOrCreateNestedMap(this.pointLocalToServer, sid);
-                            const s2l = getOrCreateNestedMap(this.pointServerToLocal, sid);
-                            const key = pLocKey(localSkId, pid);
-                            const serverId = l2s.get(key);
-                            if (serverId) s2l.delete(serverId);
-                            l2s.delete(key);
+                            this.unlinkPointId(sid, localSkId, pid);
+                            clearPendingPoint(this.pendingPoints, sid, localSkId, pid);
+
+                            const sel = this.selection();
+                            if (sel.type === 'point' && sel.id === localSkId && sel.pid === pid) {
+                                const stillExists = this.skeletons().some((sk) => sk.id === localSkId);
+                                if (stillExists) {
+                                    this.selection.set({ type: 'skeleton', id: localSkId });
+                                    this.lastEditedSkId = localSkId;
+                                } else {
+                                    this.selection.set({ type: null, id: null });
+                                    if (this.lastEditedSkId === localSkId) this.lastEditedSkId = null;
+                                }
+                            } else if (sel.type === 'skeleton' && sel.id === localSkId) {
+                                const stillExists = this.skeletons().some((sk) => sk.id === localSkId);
+                                if (!stillExists) {
+                                    this.selection.set({ type: null, id: null });
+                                    if (this.lastEditedSkId === localSkId) this.lastEditedSkId = null;
+                                }
+                            }
 
                             this.requestPaint();
+                            this.updateScreenLabels();
                         }
                     )
                 );
@@ -1287,12 +1304,14 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             );
             this.requestPaint();
             this.emitSkeletonAppearanceFor(s.id);
+            this.updateScreenLabels();
         } else if (s.type === 'point' && s.id != null) {
             this.skeletons.update((arr) =>
                 arr.map((sk) => (sk.id === s.id ? { ...sk, color: value } : sk))
             );
             this.requestPaint();
             this.emitSkeletonAppearanceFor(s.id);
+            this.updateScreenLabels();
         }
     }
 
@@ -1320,6 +1339,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     )
                 );
                 this.emitSkeletonAppearanceFor(skId);
+                this.updateScreenLabels();
             }
         }
     }
@@ -1689,6 +1709,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     onPointLabelChange(newId: string) {
         const s = this.selection();
         if (s.type !== 'point') return;
+        const sid = this.currentSlideId();
         this.skeletons.update((arr) =>
             arr.map((sk) => {
                 if (sk.id !== s.id) return sk;
@@ -1704,20 +1725,41 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             })
         );
         this.requestPaint();
+        this.updateScreenLabels();
+        if (!sid) return;
+        const sk = this.skeletons().find((item) => item.id === s.id);
+        if (!sk) return;
+        const srvId = serverPointId(
+            this.pointLocalToServer,
+            sid,
+            sk.id,
+            s.pid
+        );
+        if (!srvId) return;
+        const point = sk.points[s.pid];
+        const neighborIds = this.serverNeighborIds(sid, sk, s.pid);
+        this.socket.updateSkeletal(sid, srvId, {
+            category: point.labelId,
+            color: sk.color,
+            key_points: neighborIds.length ? neighborIds : null,
+        });
     }
 
-    isSelected(type: 'box' | 'skeleton', id: Id) {
+    isSelected(type: 'box' | 'skeleton', id: number | string) {
         const s = this.selection();
-        if (type === 'box') return s.type === 'box' && s.id === id;
+        if (type === 'box')
+            return s.type === 'box' && s.id === Number(id);
         if (type === 'skeleton')
-            return (s.type === 'skeleton' || s.type === 'point') && s.id === id;
+            return (s.type === 'skeleton' || s.type === 'point') &&
+                s.id === Number(id);
         return false;
     }
-    selectEntity(type: 'box' | 'skeleton', id: Id) {
-        if (type === 'box') this.selection.set({ type: 'box', id });
+    selectEntity(type: 'box' | 'skeleton', id: number | string) {
+        const numericId = Number(id);
+        if (type === 'box') this.selection.set({ type: 'box', id: numericId });
         else {
-            this.selection.set({ type: 'skeleton', id });
-            this.lastEditedSkId = id;
+            this.selection.set({ type: 'skeleton', id: numericId });
+            this.lastEditedSkId = numericId;
         }
         this.currentTool.set(this.selectToolObj);
         this.requestPaint();
@@ -2032,7 +2074,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                       top = T - layerRect.top;
 
                   return {
-                      id: b.id,
+                      id: String(b.id),
                       labelId: b.labelId,
                       labelName: this.boxLabelName(b.labelId),
                       color: b.color,
@@ -2063,7 +2105,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
                     // border uses skeleton color; swatch uses the point label's color
                     ptsOut.push({
-                        id: sk.id, // use skeleton id for grouping; still unique with position
+                        id: `${sk.id}:${kp.id}`,
                         labelId: kp.labelId,
                         labelName: this.skelLabelName(kp.labelId),
                         color: sk.color,
@@ -3063,7 +3105,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             }
             this.skeletons.update((arr) => arr.filter((sk) => sk.id !== s.id));
             this.selection.set({ type: null, id: null });
+            this.lastEditedSkId = null;
             this.requestPaint();
+            this.updateScreenLabels();
             return;
         }
         if (s.type === 'point' && s.id != null) {
@@ -3799,10 +3843,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 pid
             );
             if (!srvPointId) continue;
+            const point = sk.points[pid];
+            const label = point?.labelId ?? sk.labelId;
             const neighborIds = this.serverNeighborIds(sid, sk, pid);
             this.socket.updateSkeletal(sid, srvPointId, {
                 color: sk.color,
-                category: sk.labelId,
+                category: label,
                 key_points: neighborIds.length ? neighborIds : null,
             });
         }

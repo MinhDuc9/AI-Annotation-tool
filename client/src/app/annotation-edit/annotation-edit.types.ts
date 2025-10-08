@@ -13,7 +13,7 @@ export interface LabelDef {
 export type SlideMeta = { id: string; index: number };
 
 export type LabelChip = {
-    id: Id;
+    id: string;
     labelId: string;
     labelName: string;
     color: string;
