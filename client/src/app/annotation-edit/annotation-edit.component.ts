@@ -509,6 +509,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                 );
                                 this.syncServerEdgesForPoint(sid, pendingMatch.skId, pendingMatch.pid);
                                 this.requestPaint();
+                                const queuedUpdate =
+                                    this.pendingSkeletalUpdates
+                                        .get(sid)
+                                        ?.get(srv.id);
+                                if (queuedUpdate) {
+                                    this.applyServerSkeletalUpdate(
+                                        sid,
+                                        queuedUpdate,
+                                    );
+                                }
                                 return;
                             }
 
@@ -537,6 +547,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                             srv.id
                                         );
                                         clearPendingPoint(this.pendingPoints, sid, skLocalId, pid);
+                                        const queuedUpdate =
+                                            this.pendingSkeletalUpdates
+                                                .get(sid)
+                                                ?.get(srv.id);
+                                        if (queuedUpdate) {
+                                            this.applyServerSkeletalUpdate(
+                                                sid,
+                                                queuedUpdate,
+                                            );
+                                        }
                                         return;
                                     }
                                 }
@@ -567,6 +587,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                 },
                             ]);
                             linkPointIds(this.pointLocalToServer, this.pointServerToLocal, sid, localSkId, pid, srv.id);
+                            const queuedUpdate =
+                                this.pendingSkeletalUpdates
+                                    .get(sid)
+                                    ?.get(srv.id);
+                            if (queuedUpdate) {
+                                this.applyServerSkeletalUpdate(
+                                    sid,
+                                    queuedUpdate,
+                                );
+                            }
                             this.requestPaint();
                         }
                     )
@@ -579,140 +609,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         (srv: any) => {
                             const sid = this.currentSlideId();
                             if (!sid || srv?.slideId !== sid) return;
-
-                            const loc = localPointOf(this.pointServerToLocal, sid, srv.id);
-                            if (!loc) return;
-
-                            const { sk: curSkId, pid: curPid } = loc;
-
-                            // Map server neighbor ids -> local {skId, pid}
-                            const serverNeighbors: string[] = Array.isArray(
-                                srv.key_points
-                            )
-                                ? srv.key_points
-                                : [];
-                            const neighLocals = serverNeighbors
-                                .map((spid) => localPointOf(this.pointServerToLocal, sid, spid))
-                                .filter(Boolean) as Array<{
-                                sk: number;
-                                pid: string;
-                            }>;
-
-                            this.skeletons.update((arr) => {
-                                // 1) Update the current point position and skeleton color/label
-                                let list = arr.map((sk) => {
-                                    if (sk.id !== curSkId) return sk;
-
-                                    const old = sk.points[curPid];
-                                    if (!old) return sk;
-
-                                    const nx =
-                                        typeof srv.x_pos === 'number'
-                                            ? srv.x_pos
-                                            : old.x;
-                                    const ny =
-                                        typeof srv.y_pos === 'number'
-                                            ? srv.y_pos
-                                            : old.y;
-
-                                    // propagate color/category to the whole skeleton (see #5)
-                                const nextColor = srv.color ?? sk.color;
-                                const pointLabel =
-                                    srv.category ?? old.labelId;
-
-                                // rebuild edges around curPid:
-                                // keep existing edges NOT touching curPid; then add edges to neighbor local pids
-                                const keep = sk.edges.filter(
-                                    ([a, b]) => a !== curPid && b !== curPid
-                                    );
-                                    const add = neighLocals
-                                        .filter((n) => n.sk === curSkId) // same skeleton for now
-                                        .map(
-                                            (n) =>
-                                                [curPid, n.pid] as [
-                                                    string,
-                                                    string
-                                                ]
-                                        )
-                                        .filter(
-                                            ([a, b]) =>
-                                                !keep.some(
-                                                    ([x, y]) =>
-                                                        (x === a && y === b) ||
-                                                        (x === b && y === a)
-                                                )
-                                        );
-
-                                    return {
-                                        ...sk,
-                                        color: nextColor,
-                                        points: {
-                                            ...sk.points,
-                                            [curPid]: {
-                                                ...old,
-                                                x: nx,
-                                                y: ny,
-                                                labelId: pointLabel,
-                                                isPending: false,
-                                            },
-                                        },
-                                        edges: [...keep, ...add],
-                                    };
-                                });
-
-                                // 2) If any neighbor belongs to a DIFFERENT skeleton, merge them
-                                const foreign = neighLocals.filter(
-                                    (n) => n.sk !== curSkId
-                                );
-                                for (const n of foreign) {
-                                    const fromIdx = list.findIndex(
-                                        (s) => s.id === n.sk
-                                    );
-                                    const toIdx = list.findIndex(
-                                        (s) => s.id === curSkId
-                                    );
-                                    if (fromIdx === -1 || toIdx === -1)
-                                        continue;
-
-                                    const from = list[fromIdx];
-                                    const to = list[toIdx];
-
-                                    // move all points from 'from' into 'to'
-                                    const mergedPoints = {
-                                        ...to.points,
-                                        ...from.points,
-                                    };
-                                    // re-map edges: they already use local pids; just concat and de-dup
-                                    const mergedEdges = [
-                                        ...to.edges,
-                                        ...from.edges,
-                                        [curPid, n.pid] as [string, string],
-                                    ];
-                                    const dedup: [string, string][] = [];
-                                    const seen = new Set<string>();
-                                    for (const [a, b] of mergedEdges) {
-                                        const k1 = `${a}|${b}`,
-                                            k2 = `${b}|${a}`;
-                                        if (seen.has(k1) || seen.has(k2))
-                                            continue;
-                                        seen.add(k1);
-                                        seen.add(k2);
-                                        dedup.push([a, b]);
-                                    }
-
-                                    list[toIdx] = {
-                                        ...to,
-                                        points: mergedPoints,
-                                        edges: dedup,
-                                    };
-                                    list.splice(fromIdx, 1); // remove old skeleton
-                                }
-
-                                return list;
-                            });
-
-                            this.requestPaint();
-                            this.updateScreenLabels();
+                            this.applyServerSkeletalUpdate(sid, srv);
                         }
                     )
                 );
@@ -3573,6 +3470,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         Map<string, { sk: number; pid: string }>
     >();
     private pendingPoints = new Map<string, Map<string, PendingPointSnapshot>>();
+    private pendingSkeletalUpdates = new Map<string, Map<string, SkeletalDTO>>();
 
     /** Call when we first load server annotations for a slide (if/when you fetch them). */
     private seedBoxesFromServer(
@@ -3762,6 +3660,153 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         };
     }
 
+    private queueSkeletalUpdate(slideId: string, srv: SkeletalDTO): void {
+        getOrCreateNestedMap(this.pendingSkeletalUpdates, slideId).set(
+            srv.id,
+            srv,
+        );
+    }
+
+    private applyServerSkeletalUpdate(
+        slideId: string,
+        srv: SkeletalDTO,
+    ): void {
+        if (!srv?.id || slideId !== this.currentSlideId()) return;
+
+        const loc = localPointOf(this.pointServerToLocal, slideId, srv.id);
+        if (!loc) {
+            this.queueSkeletalUpdate(slideId, srv);
+            return;
+        }
+
+        const { sk: curSkId, pid: curPid } = loc;
+
+        const serverNeighbors: string[] = Array.isArray(srv.key_points)
+            ? srv.key_points
+            : [];
+        const neighLocals = serverNeighbors
+            .map((spid) => localPointOf(this.pointServerToLocal, slideId, spid))
+            .filter(Boolean) as Array<{ sk: number; pid: string }>;
+
+        const merges: Array<{ from: number; to: number; pids: string[] }> = [];
+
+        this.skeletons.update((arr) => {
+            let list = arr.map((sk) => {
+                if (sk.id !== curSkId) return sk;
+
+                const old = sk.points[curPid];
+                if (!old) return sk;
+
+                const nx =
+                    typeof srv.x_pos === 'number' ? srv.x_pos : old.x;
+                const ny =
+                    typeof srv.y_pos === 'number' ? srv.y_pos : old.y;
+
+                const keep = sk.edges.filter(
+                    ([a, b]) => a !== curPid && b !== curPid,
+                );
+                const add = neighLocals
+                    .filter((n) => n.sk === curSkId)
+                    .map((n) => [curPid, n.pid] as [string, string])
+                    .filter(
+                        ([a, b]) =>
+                            !keep.some(
+                                ([x, y]) =>
+                                    (x === a && y === b) ||
+                                    (x === b && y === a),
+                            ),
+                    );
+
+                return {
+                    ...sk,
+                    color: srv.color ?? sk.color,
+                    points: {
+                        ...sk.points,
+                        [curPid]: {
+                            ...old,
+                            x: nx,
+                            y: ny,
+                            labelId: srv.category ?? old.labelId,
+                            isPending: false,
+                        },
+                    },
+                    edges: [...keep, ...add],
+                };
+            });
+
+            const foreign = neighLocals.filter((n) => n.sk !== curSkId);
+            for (const n of foreign) {
+                const fromIdx = list.findIndex((s) => s.id === n.sk);
+                const toIdx = list.findIndex((s) => s.id === curSkId);
+                if (fromIdx === -1 || toIdx === -1) continue;
+
+                const from = list[fromIdx];
+                const to = list[toIdx];
+
+                merges.push({
+                    from: from.id,
+                    to: to.id,
+                    pids: Object.keys(from.points),
+                });
+
+                const mergedPoints = { ...to.points, ...from.points };
+                const mergedEdges = [
+                    ...to.edges,
+                    ...from.edges,
+                    [curPid, n.pid] as [string, string],
+                ];
+                const dedup: [string, string][] = [];
+                const seen = new Set<string>();
+                for (const [a, b] of mergedEdges) {
+                    const k1 = `${a}|${b}`;
+                    const k2 = `${b}|${a}`;
+                    if (seen.has(k1) || seen.has(k2)) continue;
+                    seen.add(k1);
+                    seen.add(k2);
+                    dedup.push([a, b]);
+                }
+
+                list[toIdx] = {
+                    ...to,
+                    points: mergedPoints,
+                    edges: dedup,
+                };
+                list.splice(fromIdx, 1);
+            }
+
+            return list;
+        });
+
+        if (merges.length) {
+            const l2s = getOrCreateNestedMap(
+                this.pointLocalToServer,
+                slideId,
+            );
+            const s2l = getOrCreateNestedMap(
+                this.pointServerToLocal,
+                slideId,
+            );
+            for (const merge of merges) {
+                for (const pid of merge.pids) {
+                    const oldKey = pLocKey(merge.from, pid);
+                    const srvId = l2s.get(oldKey);
+                    l2s.delete(oldKey);
+                    if (srvId) {
+                        const newKey = pLocKey(merge.to, pid);
+                        l2s.set(newKey, srvId);
+                        s2l.set(srvId, { sk: merge.to, pid });
+                    }
+                }
+            }
+        }
+
+        const pending = this.pendingSkeletalUpdates.get(slideId);
+        pending?.delete(srv.id);
+
+        this.requestPaint();
+        this.updateScreenLabels();
+    }
+
     private syncServerEdgesForPoint(slideId: string | null, skLocalId: number, pid: string) {
         if (!slideId || slideId !== this.currentSlideId()) return;
         const sk = this.skeletons().find((s) => s.id === skLocalId);
@@ -3801,6 +3846,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     private clearPointMapsForSlide(slideId: string) {
         this.pointLocalToServer.delete(slideId);
         this.pointServerToLocal.delete(slideId);
+        this.pendingSkeletalUpdates.delete(slideId);
     }
 
     private unlinkPointId(slideId: string, skLocalId: number, pid: string) {
