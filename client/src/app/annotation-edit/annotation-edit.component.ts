@@ -1090,6 +1090,35 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     }
 
     onClear() {
+        const sid = this.currentSlideId();
+        if (sid) {
+            const emittedBoxIds = new Set<string>();
+            for (const box of this.boxes()) {
+                const srvId = this.boxServerId(sid, box.id);
+                if (srvId && !emittedBoxIds.has(srvId)) {
+                    this.socket.deleteBoundingBox(sid, srvId);
+                    emittedBoxIds.add(srvId);
+                }
+            }
+
+            const pointMap = this.pointLocalToServer.get(sid);
+            if (pointMap) {
+                const emittedPoints = new Set<string>();
+                for (const srvId of pointMap.values()) {
+                    if (srvId && !emittedPoints.has(srvId)) {
+                        this.socket.deleteSkeletal(sid, srvId);
+                        emittedPoints.add(srvId);
+                    }
+                }
+            }
+
+            this.clearIdMapsForSlide(sid);
+            this.clearPointMapsForSlide(sid);
+            this.boxesBySlide.set(sid, []);
+            this.skeletonsBySlide.set(sid, []);
+            this.lastEditedSkId = null;
+        }
+
         this.boxes.set([]);
         this.skeletons.set([]);
         this.selection.set({ type: null, id: null });
