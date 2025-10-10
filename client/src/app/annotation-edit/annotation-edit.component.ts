@@ -789,18 +789,30 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     private restoreSlideState(slideId: string) {
         this.clearIdMapsForSlide(slideId);
         this.clearPointMapsForSlide(slideId);
-        this.boxes.set(
-            (this.boxesBySlide.get(slideId) ?? []).map((b) => ({ ...b }))
+        const cachedBoxes = (this.boxesBySlide.get(slideId) ?? []).map(
+            (b) => ({ ...b })
         );
-        this.skeletons.set(
-            (this.skeletonsBySlide.get(slideId) ?? []).map((sk) => ({
+        for (const box of cachedBoxes) {
+            this.ensureBoxLabelIdForName(box.labelId);
+        }
+        this.boxes.set(cachedBoxes);
+
+        const cachedSkels = (this.skeletonsBySlide.get(slideId) ?? []).map(
+            (sk) => ({
                 ...sk,
                 points: { ...sk.points },
                 edges:
                     sk.edges?.map((e) => [e[0], e[1]] as [string, string]) ??
                     [],
-            }))
+            })
         );
+        for (const sk of cachedSkels) {
+            this.ensureSkelLabelIdForName(sk.labelId);
+            for (const kp of Object.values(sk.points)) {
+                this.ensureSkelLabelIdForName(kp.labelId);
+            }
+        }
+        this.skeletons.set(cachedSkels);
         // clear selection on slide switch
         this.selection.set({ type: null, id: null });
         this.requestPaint?.();
@@ -978,14 +990,14 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     /* ---------- Data ---------- */
     boxLabels = signal<LabelDef[]>([
-        { id: 'box-bird', name: 'Bird' },
-        { id: 'box-wing', name: 'Wing' },
-        { id: 'box-head', name: 'Head' },
+        { id: 'Bird', name: 'Bird' },
+        { id: 'Wing', name: 'Wing' },
+        { id: 'Head', name: 'Head' },
     ]);
     skelLabels = signal<LabelDef[]>([
-        { id: 'kp-eye', name: 'Eye' },
-        { id: 'kp-beak', name: 'Beak' },
-        { id: 'kp-wingtip', name: 'Wing Tip' },
+        { id: 'Eye', name: 'Eye' },
+        { id: 'Beak', name: 'Beak' },
+        { id: 'Wing Tip', name: 'Wing Tip' },
     ]);
 
     // Active defaults (creation)
@@ -1281,7 +1293,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     if (srv) {
                         this.socket.updateSkeletal(sid, srv, {
                             color: sk.color,
-                            category: sk.labelId,
+                            category: this.skelCategoryValue(sk.labelId),
                         });
                     }
                 }
@@ -1289,19 +1301,70 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         }
     }
 
-    private slugify(name: string) {
-        return name
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/(^-|-$)/g, '');
+    private normalizeLabelName(name: string | null | undefined): string {
+        return (name ?? '').trim();
     }
-    private ensureUniqueId(base: string, taken: Set<string>) {
-        let id = base,
-            i = 2;
-        while (taken.has(id)) id = `${base}-${i++}`;
+
+    private categoryNameOrFallback(
+        name: string | null | undefined,
+        fallback: string,
+    ): string {
+        const normalized = this.normalizeLabelName(name);
+        return normalized || fallback;
+    }
+
+    private ensureBoxLabelIdForName(name: string | null | undefined): string {
+        const display = this.categoryNameOrFallback(name, 'Unknown');
+        const current = this.boxLabels();
+        const existing = current.find(
+            (l) => l.name.toLowerCase() === display.toLowerCase(),
+        );
+        if (existing) {
+            return existing.id;
+        }
+        const id = display;
+        this.boxLabels.set([...current, { id, name: display }]);
+        if (!this.activeLabelId()) {
+            this.activeLabelId.set(id);
+        }
         return id;
     }
+
+    private ensureSkelLabelIdForName(name: string | null | undefined): string {
+        const display = this.categoryNameOrFallback(name, 'Unknown');
+        const current = this.skelLabels();
+        const existing = current.find(
+            (l) => l.name.toLowerCase() === display.toLowerCase(),
+        );
+        if (existing) {
+            return existing.id;
+        }
+        const id = display;
+        this.skelLabels.set([...current, { id, name: display }]);
+        if (!this.activeSkelLabelId()) {
+            this.activeSkelLabelId.set(id);
+        }
+        return id;
+    }
+
+    private boxCategoryValue(labelId: string | null | undefined): string {
+        const match = labelId
+            ? this.boxLabels().find(
+                  (l) => l.id.toLowerCase() === labelId.toLowerCase(),
+              )
+            : undefined;
+        return match?.name ?? this.categoryNameOrFallback(labelId, 'Unknown');
+    }
+
+    private skelCategoryValue(labelId: string | null | undefined): string {
+        const match = labelId
+            ? this.skelLabels().find(
+                  (l) => l.id.toLowerCase() === labelId.toLowerCase(),
+              )
+            : undefined;
+        return match?.name ?? this.categoryNameOrFallback(labelId, 'Unknown');
+    }
+
     boxLabelName = (id: string) =>
         this.boxLabels().find((l) => l.id === id)?.name ?? id;
     skelLabelName = (id: string) =>
@@ -1337,13 +1400,8 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     }
 
     addBoxLabel() {
-        const name = this.newBoxLabelName().trim();
+        const name = this.normalizeLabelName(this.newBoxLabelName());
         if (!name) return;
-        const taken = new Set(this.boxLabels().map((l) => l.id));
-        const base = `box-${this.slugify(name) || 'label'}`;
-        const id = this.ensureUniqueId(base, taken);
-
-        // prevent duplicate names (case-insensitive)
         if (
             this.boxLabels().some(
                 (l) => l.name.toLowerCase() === name.toLowerCase()
@@ -1357,6 +1415,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             return;
         }
 
+        const id = name;
         this.boxLabels.update((arr) => [...arr, { id, name }]);
         // if no active or the user just added the first, set active
         if (!this.activeLabelId() || this.boxLabels().length === 1)
@@ -1365,12 +1424,8 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     }
 
     addSkelLabel() {
-        const name = this.newSkelLabelName().trim();
+        const name = this.normalizeLabelName(this.newSkelLabelName());
         if (!name) return;
-        const taken = new Set(this.skelLabels().map((l) => l.id));
-        const base = `kp-${this.slugify(name) || 'label'}`;
-        const id = this.ensureUniqueId(base, taken);
-
         if (
             this.skelLabels().some(
                 (l) => l.name.toLowerCase() === name.toLowerCase()
@@ -1384,6 +1439,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             return;
         }
 
+        const id = name;
         this.skelLabels.update((arr) => [...arr, { id, name }]);
         if (!this.activeSkelLabelId() || this.skelLabels().length === 1)
             this.activeSkelLabelId.set(id);
@@ -1397,7 +1453,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     if (srv) {
                         this.socket.updateSkeletal(sid, srv, {
                             color: sk.color,
-                            category: sk.labelId,
+                            category: this.skelCategoryValue(sk.labelId),
                         });
                     }
                 }
@@ -1408,7 +1464,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     // --- Add: compact add/delete handlers (BOX) ---
     addBoxLabelPrompt() {
-        const name = (window.prompt('New box label name?') || '').trim();
+        const name = this.normalizeLabelName(
+            window.prompt('New box label name?') || ''
+        );
         if (!name) return;
 
         // case-insensitive duplicate name check
@@ -1425,17 +1483,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             return;
         }
 
-        const taken = new Set(this.boxLabels().map((l) => l.id));
-        const base = `box-${this.slugify(name) || 'label'}`;
-        const id = this.ensureUniqueId(base, taken);
-
+        const id = name;
         this.boxLabels.update((arr) => [...arr, { id, name }]);
         if (!this.activeLabelId()) this.activeLabelId.set(id);
     }
 
     // --- Add: compact add/delete handlers (SKELETON KEYPOINT) ---
     addSkelLabelPrompt() {
-        const name = (window.prompt('New keypoint label name?') || '').trim();
+        const name = this.normalizeLabelName(
+            window.prompt('New keypoint label name?') || ''
+        );
         if (!name) return;
 
         if (
@@ -1451,10 +1508,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             return;
         }
 
-        const taken = new Set(this.skelLabels().map((l) => l.id));
-        const base = `kp-${this.slugify(name) || 'label'}`;
-        const id = this.ensureUniqueId(base, taken);
-
+        const id = name;
         this.skelLabels.update((arr) => [...arr, { id, name }]);
         if (!this.activeSkelLabelId()) {
             this.activeSkelLabelId.set(id);
@@ -1468,7 +1522,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         if (srv) {
                             this.socket.updateSkeletal(sid, srv, {
                                 color: sk.color,
-                                category: sk.labelId,
+                                category: this.skelCategoryValue(sk.labelId),
                             });
                         }
                     }
@@ -1558,7 +1612,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         if (srv) {
                             this.socket.updateSkeletal(sid, srv, {
                                 color: sk.color,
-                                category: sk.labelId,
+                                category: this.skelCategoryValue(sk.labelId),
                             });
                         }
                     }
@@ -1597,7 +1651,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         if (srv) {
                             this.socket.updateSkeletal(sid, srv, {
                                 color: sk.color,
-                                category: sk.labelId,
+                                category: this.skelCategoryValue(sk.labelId),
                             });
                         }
                     }
@@ -1665,7 +1719,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         const point = sk.points[s.pid];
         const neighborIds = this.serverNeighborIds(sid, sk, s.pid);
         this.socket.updateSkeletal(sid, srvId, {
-            category: point.labelId,
+            category: this.skelCategoryValue(point.labelId),
             color: sk.color,
             key_points: neighborIds.length ? neighborIds : null,
         });
@@ -2289,7 +2343,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                 x_long: box.w,
                                 y_long: box.h,
                                 color: box.color,
-                                category: box.labelId,
+                                category: this.boxCategoryValue(box.labelId),
                                 clientTempId: String(tempId), // <- critical for mapping
                             });
                         }
@@ -2667,7 +2721,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             x_long: box.w,
                             y_long: box.h,
                             color: box.color,
-                            category: box.labelId,
+                            category: this.boxCategoryValue(box.labelId),
                         });
                     }
                 }
@@ -2694,7 +2748,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                     x_pos: p.x,
                                     y_pos: p.y,
                                     color: sk.color,
-                                    category: p.labelId,
+                                    category: this.skelCategoryValue(p.labelId),
                                     key_points: neighborIds.length ? neighborIds : null,
                                 });
                             }
@@ -2719,7 +2773,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                     x_pos: p.x,
                                     y_pos: p.y,
                                     color: sk.color,
-                                    category: p.labelId,
+                                    category: this.skelCategoryValue(p.labelId),
                                     key_points: neighborIds.length ? neighborIds : null,
                                 });
                             }
@@ -2760,6 +2814,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         }): { sk: SkeletonAnn; pid: string } => {
             const id = this.idSeq++;
             const pid = 'p' + this.pointSeq++;
+            const activeLabelId = this.ensureSkelLabelIdForName(
+                this.activeSkelLabelId(),
+            );
             const sk: SkeletonAnn = {
                 id,
                 points: {
@@ -2768,12 +2825,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         x: p.x,
                         y: p.y,
                         v: 2,
-                        labelId: this.activeSkelLabelId(),
+                        labelId: activeLabelId,
                         isPending: true,
                     },
                 },
                 edges: [] as [string, string][],
-                labelId: this.activeSkelLabelId(),
+                labelId: activeLabelId,
                 color: this.activeSkelColor(), // default; user can change in sidebar
             };
             this.skeletons.update((arr) => [...arr, sk]);
@@ -2786,10 +2843,18 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     y_pos: p.y,
                     key_points: null,
                     color: sk.color, // for first point use skeleton color
-                    category: this.activeSkelLabelId(),
+                    category: this.skelCategoryValue(activeLabelId),
                     clientTempId: `${sk.id}:${pid}`,
                 });
-                markPendingPoint(this.pendingPoints, sid, sk.id, pid, sk.points[pid], sk.color, sk.labelId);
+                markPendingPoint(
+                    this.pendingPoints,
+                    sid,
+                    sk.id,
+                    pid,
+                    sk.points[pid],
+                    sk.color,
+                    sk.points[pid].labelId,
+                );
             }
             // after you build `sk` and push to `this.skeletons`
             this.lastEditedSkId = sk.id;
@@ -2799,9 +2864,17 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
         const addPointToSkeleton = (
             sk: SkeletonAnn,
-            p: { x: number; y: number }
+            p: { x: number; y: number },
+            labelHint?: string,
         ): { pid: string } => {
             const pid = 'p' + this.pointSeq++;
+            const baseLabelId =
+                labelHint ??
+                sk.labelId ??
+                this.activeSkelLabelId();
+            const pointLabelId = this.ensureSkelLabelIdForName(
+                baseLabelId,
+            );
             const next: SkeletonAnn = {
                 ...sk,
                 points: {
@@ -2811,7 +2884,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         x: p.x,
                         y: p.y,
                         v: 2,
-                        labelId: this.activeSkelLabelId(),
+                        labelId: pointLabelId,
                         isPending: true,
                     },
                 },
@@ -2830,10 +2903,19 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     y_pos: p.y,
                     key_points: null,
                     color: sk.color, // for first point use skeleton color
-                    category: this.activeSkelLabelId(),
+                    category: this.skelCategoryValue(pointLabelId),
                     clientTempId: `${sk.id}:${pid}`,
                 });
-                markPendingPoint(this.pendingPoints, sid, sk.id, pid, newPoint ?? next.points[pid], sk.color, sk.labelId);
+                const pendingPoint = newPoint ?? next.points[pid];
+                markPendingPoint(
+                    this.pendingPoints,
+                    sid,
+                    sk.id,
+                    pid,
+                    pendingPoint,
+                    sk.color,
+                    pendingPoint.labelId,
+                );
             }
             return { pid };
         };
@@ -2943,7 +3025,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             if (sel.type === 'point') {
                 // add new point, connect to previous
                 const sk = this.skeletons().find((s) => s.id === sel.id)!;
-                const { pid: newPid } = addPointToSkeleton(sk, pImg);
+                const sourcePoint = sk.points[sel.pid];
+                const { pid: newPid } = addPointToSkeleton(
+                    sk,
+                    pImg,
+                    sourcePoint?.labelId ?? sk.labelId,
+                );
                 ensureEdge(
                     this.skeletons().find((s) => s.id === sel.id)!,
                     sel.pid,
@@ -3515,6 +3602,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
         for (const srv of serverBoxes ?? []) {
             const localId = this.idSeq++;
+            const labelId = this.ensureBoxLabelIdForName(srv.category);
             l2s.set(localId, srv.id);
             s2l.set(srv.id, localId);
             ui.push({
@@ -3523,7 +3611,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 y: srv.y_pos,
                 w: srv.x_long,
                 h: srv.y_long,
-                labelId: srv.category,
+                labelId,
                 color: srv.color,
             });
         }
@@ -3595,13 +3683,15 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             const points: Record<string, Keypoint> = {};
             const serverToLocal = new Map<string, string>();
             let skColor: string | null = null;
-            let skLabel: string | null = null;
+            let skLabelId: string | null = null;
 
             for (const serverId of component) {
                 const dto = dtoById.get(serverId);
                 if (!dto) continue;
                 const pid = 'p' + this.pointSeq++;
-                const labelId = dto.category || this.activeSkelLabelId();
+                const labelId = this.ensureSkelLabelIdForName(
+                    dto.category ?? skLabelId ?? this.activeSkelLabelId(),
+                );
                 points[pid] = {
                     id: pid,
                     x: dto.x_pos ?? 0,
@@ -3612,7 +3702,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 serverToLocal.set(serverId, pid);
                 linkPointIds(this.pointLocalToServer, this.pointServerToLocal, slideId, localSkId, pid, serverId);
                 if (!skColor && dto.color) skColor = dto.color;
-                if (!skLabel && dto.category) skLabel = dto.category;
+                if (!skLabelId && dto.category) skLabelId = labelId;
             }
 
             const edges: [string, string][] = [];
@@ -3634,13 +3724,15 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 }
             }
 
-            skeletons.push({
-                id: localSkId,
-                color: skColor ?? this.activeSkelColor(),
-                labelId: skLabel ?? this.activeSkelLabelId(),
-                points,
-                edges,
-            });
+        skeletons.push({
+            id: localSkId,
+            color: skColor ?? this.activeSkelColor(),
+            labelId:
+                skLabelId ??
+                this.ensureSkelLabelIdForName(this.activeSkelLabelId()),
+            points,
+            edges,
+        });
         }
 
         this.skeletons.set(skeletons);
@@ -3685,7 +3777,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             w: srv.x_long,
             h: srv.y_long,
             color: srv.color,
-            labelId: srv.category,
+            labelId: this.ensureBoxLabelIdForName(srv.category),
         };
     }
 
@@ -3731,6 +3823,10 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 const ny =
                     typeof srv.y_pos === 'number' ? srv.y_pos : old.y;
 
+                const pointLabelId = this.ensureSkelLabelIdForName(
+                    srv.category ?? old.labelId,
+                );
+
                 const keep = sk.edges.filter(
                     ([a, b]) => a !== curPid && b !== curPid,
                 );
@@ -3749,13 +3845,14 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 return {
                     ...sk,
                     color: srv.color ?? sk.color,
+                    labelId: pointLabelId,
                     points: {
                         ...sk.points,
                         [curPid]: {
                             ...old,
                             x: nx,
                             y: ny,
-                            labelId: srv.category ?? old.labelId,
+                            labelId: pointLabelId,
                             isPending: false,
                         },
                     },
@@ -3901,7 +3998,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             x_long: box.w,
             y_long: box.h,
             color: box.color,
-            category: box.labelId,
+            category: this.boxCategoryValue(box.labelId),
         });
     }
 
@@ -3919,7 +4016,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             );
             if (!srvPointId) continue;
             const point = sk.points[pid];
-            const label = point?.labelId ?? sk.labelId;
+            const label = this.skelCategoryValue(point?.labelId ?? sk.labelId);
             const neighborIds = this.serverNeighborIds(sid, sk, pid);
             this.socket.updateSkeletal(sid, srvPointId, {
                 color: sk.color,
