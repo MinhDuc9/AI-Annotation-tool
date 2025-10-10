@@ -2939,20 +2939,26 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         };
 
         const mergeSkeletons = (keepId: Id, dropId: Id) => {
+            const sid = this.currentSlideId();
             let keep = this.skeletons().find((s) => s.id === keepId)!;
             let drop = this.skeletons().find((s) => s.id === dropId)!;
             // move points
             const movedPts: Record<string, Keypoint> = { ...keep.points };
+            const renameMap = new Map<string, string>();
             for (const [pid, kp] of Object.entries(drop.points)) {
-                const npid = movedPts[pid] ? 'm' + pid : pid;
+                let npid = pid;
+                while (movedPts[npid]) {
+                    npid = `m${npid}`;
+                }
+                renameMap.set(pid, npid);
                 movedPts[npid] = { ...kp, id: npid };
             }
             // move edges (remap pids if we ever renamed)
             const movedEdges: [string, string][] = [...keep.edges];
+            const remapPid = (pid: string) => renameMap.get(pid) ?? pid;
             for (const [a, b] of drop.edges) {
-                // if you remap pids, do that first
-                const aa = movedPts[a] ? a : 'm' + a in movedPts ? 'm' + a : a;
-                const bb = movedPts[b] ? b : 'm' + b in movedPts ? 'm' + b : b;
+                const aa = remapPid(a);
+                const bb = remapPid(b);
                 if (
                     !movedEdges.some(
                         ([x, y]) =>
@@ -2972,6 +2978,33 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 const filtered = arr.filter((s) => s.id !== dropId);
                 return filtered.map((s) => (s.id === keepId ? merged : s));
             });
+
+            if (sid) {
+                const l2sMap = getOrCreateNestedMap(this.pointLocalToServer, sid);
+                const s2lMap = getOrCreateNestedMap(this.pointServerToLocal, sid);
+                const pendingMap = this.pendingPoints.get(sid);
+
+                for (const [oldPid, newPid] of renameMap) {
+                    const oldKey = pLocKey(dropId, oldPid);
+                    const srvId = l2sMap.get(oldKey);
+                    if (srvId) {
+                        l2sMap.delete(oldKey);
+                        l2sMap.set(pLocKey(keepId, newPid), srvId);
+                        s2lMap.set(srvId, { sk: keepId, pid: newPid });
+                    }
+                    if (pendingMap) {
+                        const snap = pendingMap.get(oldKey);
+                        if (snap) {
+                            pendingMap.delete(oldKey);
+                            pendingMap.set(pLocKey(keepId, newPid), {
+                                ...snap,
+                                skId: keepId,
+                                pid: newPid,
+                            });
+                        }
+                    }
+                }
+            }
         };
 
         const clickExistingPoint = (
