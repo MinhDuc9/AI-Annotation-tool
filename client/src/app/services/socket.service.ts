@@ -118,6 +118,10 @@ export class SocketService {
   readonly clientInstanceId: string;
 
   constructor(private zone: NgZone) {
+    this.clientInstanceId =
+      (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
     const runtimeWsUrl = (window as any)?.env?.WS_URL;
     const socketUrl =
       typeof runtimeWsUrl === 'string' && runtimeWsUrl.trim()
