@@ -77,13 +77,17 @@ export interface TouchPayload {
 export interface BoxTouchPayload {
   slideId: string;
   userId: string;
-  boxId: number;
+  boxId?: number;
+  boundingBoxId?: string;
+  clientInstanceId?: string;
 }
 export interface SkeletalTouchPayload {
   slideId: string;
   userId: string;
-  skeletalId: number;
+  skeletalId?: number;
   pointId?: string;
+  pointServerId?: string;
+  clientInstanceId?: string;
 }
 /** -------- Skeletons -------- */
 export interface SkeletalDTO {
@@ -111,6 +115,7 @@ export type SkeletalUpdate = {
 export class SocketService {
   private socket: Socket;
   private lastJoin: { slideId: string; userId: string } | null = null;
+  readonly clientInstanceId: string;
 
   constructor(private zone: NgZone) {
     const runtimeWsUrl = (window as any)?.env?.WS_URL;
@@ -189,10 +194,10 @@ export class SocketService {
 
   // Live cursor/drag broadcasts
   boxTouch(payload: TouchPayload): void {
-    this.socket.emit('onTouch', payload);
+    this.socket.emit('onTouch', { ...payload, clientInstanceId: this.clientInstanceId });
   }
   boxUnTouch(payload: TouchPayload): void {
-    this.socket.emit('unTouch', payload);
+    this.socket.emit('unTouch', { ...payload, clientInstanceId: this.clientInstanceId });
   }
   onBoxTouch(): Observable<BoxTouchPayload> {
     return this.fromEventInZone('onTouch');
@@ -207,7 +212,6 @@ export class SocketService {
     this.socket.emit('createBoundingBox', { slideId, x_pos, y_pos, x_long, y_long, color, category, clientTempId });
   }
   updateBoundingBox(slideId: string, boundingBoxId: string, patch: BoundingBoxUpdate): void {
-    console.log('updateBoundingBox', { slideId, boundingBoxId, ...patch });
     this.socket.emit('updatePosition', { slideId, boundingBoxId, ...patch });
   }
   deleteBoundingBox(slideId: string, boundingBoxId: string): void {
@@ -228,10 +232,10 @@ export class SocketService {
 
   // Live cursor/drag broadcasts
   skeletalTouch(payload: TouchPayload): void {
-    this.socket.emit('skeletalOnTouch', payload);
+    this.socket.emit('skeletalOnTouch', { ...payload, clientInstanceId: this.clientInstanceId });
   }
   skeletalUnTouch(payload: TouchPayload): void {
-    this.socket.emit('skeletalUnTouch', payload);
+    this.socket.emit('skeletalUnTouch', { ...payload, clientInstanceId: this.clientInstanceId });
   }
   onSkeletalTouch(): Observable<SkeletalTouchPayload> {
     return this.fromEventInZone('skeletalOnTouch');

@@ -31,7 +31,7 @@ import {
     SlideService,
 } from '../services/slide.service';
 import {
-  BoundingBoxDTO,
+    BoundingBoxDTO,
     SkeletalDTO,
     SocketCommentDTO,
     SocketCommentDeletedDTO,
@@ -311,56 +311,285 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 // clear all locks when slide changes
                 this.boxLocks.set(new Map());
                 this.skelLocks.set(new Map());
+                this.pendingRemoteBoxLocks.clear();
+                this.pendingRemoteSkelLocks.clear();
+                this.pendingRemoteSkelByTemp.clear();
+                this.remoteSkelLockState.clear();
 
                 // dispose previous
                 this.disposeTouchHandlers?.();
                 this._touchOffs = [
                     this.observe(this.socket.onBoxTouch(), (p) => {
+                        this.logLock('socket:onBoxTouch', p);
                         if (!p?.slideId || p.slideId !== this.currentSlideId())
                             return;
+                        const emitter = (p.clientInstanceId ?? '').trim() || '';
+                        if (
+                            emitter &&
+                            emitter === this.socket.clientInstanceId
+                        ) {
+                            this.logLock('socket:onBoxTouch:ignored-self', {
+                                emitter,
+                            });
+                            return;
+                        }
                         const user = (p.userId ?? '').trim();
-                        if (!user || user === this.me()) return; // ignore self
-                        const localId: Id | undefined = p.boxId; // assume payload carries boxId (see emits below)
-                        if (typeof localId === 'number')
-                            this.setBoxLock(localId, user);
+                        if (!emitter && (!user || user === this.me())) {
+                            this.logLock(
+                                'socket:onBoxTouch:ignored-self-fallback',
+                                { user }
+                            );
+                            return;
+                        }
+                        const sid = p.slideId;
+                        const instance =
+                            emitter || (user ? `user:${user}` : '');
+                        let localId: Id | undefined;
+                        let serverId: string | undefined =
+                            typeof p.boundingBoxId === 'string'
+                                ? p.boundingBoxId
+                                : undefined;
+                        if (serverId) {
+                            localId = this.boxLocalId(sid, serverId);
+                        } else if (typeof p.boxId === 'number') {
+                            localId = p.boxId;
+                        }
+                        if (typeof localId === 'number') {
+                            this.setBoxLock(localId, {
+                                by: user,
+                                instanceId: emitter || undefined,
+                            });
+                            if (serverId)
+                                this.clearPendingBoxLock(sid, serverId);
+                        } else if (serverId) {
+                            this.queuePendingBoxLock(sid, serverId, {
+                                by: user,
+                                instanceId: emitter || undefined,
+                            });
+                        }
                         this.requestPaint();
                     }),
                     this.observe(this.socket.onBoxUnTouch(), (p) => {
+                        this.logLock('socket:onBoxUnTouch', p);
                         if (!p?.slideId || p.slideId !== this.currentSlideId())
                             return;
+                        const emitter = (p.clientInstanceId ?? '').trim() || '';
+                        if (
+                            emitter &&
+                            emitter === this.socket.clientInstanceId
+                        ) {
+                            this.logLock('socket:onBoxUnTouch:ignored-self', {
+                                emitter,
+                            });
+                            return;
+                        }
                         const user = (p.userId ?? '').trim();
-                        if (!user || user === this.me()) return;
-                        const localId: Id | undefined = p.boxId;
-                        if (typeof localId === 'number')
+                        if (!emitter && (!user || user === this.me())) {
+                            this.logLock(
+                                'socket:onBoxUnTouch:ignored-self-fallback',
+                                { user }
+                            );
+                            return;
+                        }
+                        const sid = p.slideId;
+                        let localId: Id | undefined;
+                        const serverId =
+                            typeof p.boundingBoxId === 'string'
+                                ? p.boundingBoxId
+                                : undefined;
+                        if (serverId) {
+                            localId = this.boxLocalId(sid, serverId);
+                        } else if (typeof p.boxId === 'number') {
+                            localId = p.boxId;
+                        }
+                        if (typeof localId === 'number') {
                             this.setBoxLock(localId, null);
+                        } else if (serverId) {
+                            this.clearPendingBoxLock(sid, serverId);
+                        }
                         this.requestPaint();
                     }),
 
                     this.observe(this.socket.onSkeletalTouch(), (p) => {
+                        this.logLock('socket:onSkeletalTouch', p);
                         if (!p?.slideId || p.slideId !== this.currentSlideId())
                             return;
+
+                        const emitter = (p.clientInstanceId ?? '').trim();
+                        // ignore my own events
+                        if (
+                            emitter &&
+                            emitter === this.socket.clientInstanceId
+                        ) {
+                            this.logLock(
+                                'socket:onSkeletalTouch:ignored-self',
+                                { emitter }
+                            );
+                            return;
+                        }
                         const user = (p.userId ?? '').trim();
-                        if (!user || user === this.me()) return;
-                        const skId: Id | undefined = p.skeletalId;
-                        // if p.pointId is present -> locking a point locks the whole skeleton for others
-                        if (typeof skId === 'number')
-                            this.setSkelLock(skId, {
-                                by: user,
-                                pid: p.pointId,
-                            });
+                        if (!emitter && (!user || user === this.me())) {
+                            this.logLock(
+                                'socket:onSkeletalTouch:ignored-self-fallback',
+                                { user }
+                            );
+                            return;
+                        }
+
+                        const sid = p.slideId;
+                        const instance =
+                            emitter || (user ? `user:${user}` : '');
+                        const pointServerId =
+                            typeof p.pointServerId === 'string'
+                                ? p.pointServerId
+                                : undefined;
+
+                        if (pointServerId) {
+                            // We can map to my local ids: apply lock immediately
+                            const mapping = this.pointServerToLocal
+                                .get(sid)
+                                ?.get(pointServerId);
+                            if (mapping) {
+                                const localSkId = mapping.sk as Id;
+                                const pid = mapping.pid;
+                                this.addRemoteSkelLock(
+                                    localSkId,
+                                    {
+                                        by: user,
+                                        pid,
+                                        instanceId: instance || undefined,
+                                    },
+                                    1
+                                );
+                                this.clearPendingSkelLock(sid, pointServerId);
+                            } else {
+                                // Not mapped yet -> queue pending until mapping exists (DO NOT apply a lock yet)
+                                this.queuePendingSkelLock(sid, pointServerId, {
+                                    by: user,
+                                    instanceId: instance || undefined,
+                                    pid:
+                                        typeof p.pointId === 'string'
+                                            ? p.pointId
+                                            : undefined,
+                                    count: 1,
+                                });
+                            }
+                        } else if (
+                            typeof p.skeletalId === 'number' &&
+                            typeof p.pointId === 'string'
+                        ) {
+                            // No server id yet (common during fast ctrl-create / connect-existing):
+                            // DO NOT apply any lock using remote skeletalId as my local id.
+                            // Optionally remember intent via your temp store if you have one:
+                            if (
+                                instance &&
+                                this.remoteSkelTempKey &&
+                                this.pendingRemoteSkelByTemp
+                            ) {
+                                const tempKey = this.remoteSkelTempKey(
+                                    sid,
+                                    p.skeletalId,
+                                    p.pointId
+                                );
+                                this.pendingRemoteSkelByTemp.set(tempKey, {
+                                    by: user,
+                                    instanceId: instance,
+                                });
+                                this.logLock('pendingSkelTemp:add', {
+                                    key: tempKey,
+                                });
+                            }
+                        }
+
                         this.requestPaint();
                     }),
+                    // --- 2) pass userId into removeRemoteSkelLock in the UnTouch handler
                     this.observe(this.socket.onSkeletalUnTouch(), (p) => {
+                        this.logLock('socket:onSkeletalUnTouch', p);
                         if (!p?.slideId || p.slideId !== this.currentSlideId())
                             return;
+
+                        const emitter = (p.clientInstanceId ?? '').trim();
+                        // ignore my own events
+                        if (
+                            emitter &&
+                            emitter === this.socket.clientInstanceId
+                        ) {
+                            this.logLock(
+                                'socket:onSkeletalUnTouch:ignored-self',
+                                { emitter }
+                            );
+                            return;
+                        }
                         const user = (p.userId ?? '').trim();
-                        if (!user || user === this.me()) return;
-                        const skId: Id | undefined = p.skeletalId;
-                        if (typeof skId === 'number')
-                            this.setSkelLock(skId, null);
+                        if (!emitter && (!user || user === this.me())) {
+                            this.logLock(
+                                'socket:onSkeletalUnTouch:ignored-self-fallback',
+                                { user }
+                            );
+                            return;
+                        }
+
+                        const sid = p.slideId;
+                        const instance =
+                            emitter || (user ? `user:${user}` : '');
+                        const pointServerId =
+                            typeof p.pointServerId === 'string'
+                                ? p.pointServerId
+                                : undefined;
+
+                        if (pointServerId) {
+                            const mapping = this.pointServerToLocal
+                                .get(sid)
+                                ?.get(pointServerId);
+                            if (mapping) {
+                                const localSkId = mapping.sk as Id;
+                                // only now we know which local skeleton to clear
+                                this.removeRemoteSkelLock(
+                                    localSkId,
+                                    instance,
+                                    1,
+                                    user
+                                );
+                            } else {
+                                // If we had queued a pending lock for this server id, clear it
+                                this.clearPendingSkelLock(sid, pointServerId);
+                            }
+                        } else if (
+                            typeof p.skeletalId === 'number' &&
+                            typeof p.pointId === 'string'
+                        ) {
+                            // No server id -> only clear the temp, do not touch visual lock state
+                            if (
+                                this.remoteSkelTempKey &&
+                                this.pendingRemoteSkelByTemp
+                            ) {
+                                const tempKey = this.remoteSkelTempKey(
+                                    sid,
+                                    p.skeletalId,
+                                    p.pointId
+                                );
+                                if (
+                                    this.pendingRemoteSkelByTemp.delete(tempKey)
+                                ) {
+                                    this.logLock('pendingSkelTemp:remove', {
+                                        key: tempKey,
+                                    });
+                                }
+                            }
+                        }
+
                         this.requestPaint();
                     }),
                 ];
+            });
+
+            effect(() => {
+                const sid = this.currentSlideId();
+                const sel = this.selection();
+                void this.boxes();
+                void this.skeletons();
+                this.syncSelectionLocks(sid ?? null, sel);
             });
 
             let offAnn: Array<() => void> = [];
@@ -380,39 +609,65 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     this.observe(
                         this.socket.onBoundingBoxCreated(),
                         (srv: any) => {
+                            this.logLock('socket:onBoundingBoxCreated', srv);
                             if (!srv?.slideId || srv.slideId !== sid) return;
 
                             // If server echoes a clientTempId, use it; else insert fresh
                             const clientTempId = (srv as any).clientTempId
                                 ? Number((srv as any).clientTempId)
                                 : undefined;
-                            const pendingLocalId = takePendingBoxMatch(this.pendingBoxes, sid, srv);
+                            const pendingLocalId = takePendingBoxMatch(
+                                this.pendingBoxes,
+                                sid,
+                                srv
+                            );
 
                             if (clientTempId != null) {
                                 // Link ids and replace optimistic
                                 this.linkBoxIds(sid, clientTempId, srv.id);
-                                clearPendingBox(this.pendingBoxes, sid, clientTempId);
+                                this.tryApplyPendingBoxLock(sid, srv.id);
+                                clearPendingBox(
+                                    this.pendingBoxes,
+                                    sid,
+                                    clientTempId
+                                );
                                 this.boxes.update((arr) => {
-                                    const i = arr.findIndex((x) => x.id === clientTempId);
+                                    const i = arr.findIndex(
+                                        (x) => x.id === clientTempId
+                                    );
                                     if (i === -1) return arr;
                                     const next = arr.slice();
-                                    next[i] = this.coerceServerBoxToUI(clientTempId, srv);
+                                    next[i] = this.coerceServerBoxToUI(
+                                        clientTempId,
+                                        srv
+                                    );
                                     return next;
                                 });
                             } else if (pendingLocalId != null) {
                                 this.linkBoxIds(sid, pendingLocalId, srv.id);
-                                clearPendingBox(this.pendingBoxes, sid, pendingLocalId);
+                                this.tryApplyPendingBoxLock(sid, srv.id);
+                                clearPendingBox(
+                                    this.pendingBoxes,
+                                    sid,
+                                    pendingLocalId
+                                );
                                 this.boxes.update((arr) => {
-                                    const i = arr.findIndex((x) => x.id === pendingLocalId);
+                                    const i = arr.findIndex(
+                                        (x) => x.id === pendingLocalId
+                                    );
                                     if (i === -1) return arr;
                                     const next = arr.slice();
-                                    next[i] = this.coerceServerBoxToUI(pendingLocalId, srv);
+                                    next[i] = this.coerceServerBoxToUI(
+                                        pendingLocalId,
+                                        srv
+                                    );
                                     return next;
                                 });
                             } else {
                                 // No temp id: insert new with a new local id
                                 const localId = this.idSeq++;
                                 this.linkBoxIds(sid, localId, srv.id);
+                                this.tryApplyPendingBoxLock(sid, srv.id);
                                 this.boxes.update((arr) => [
                                     ...arr,
                                     this.coerceServerBoxToUI(localId, srv),
@@ -429,6 +684,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     this.observe(
                         this.socket.onBoundingBoxUpdated(),
                         (srv: any) => {
+                            this.logLock('socket:onBoundingBoxUpdated', srv);
                             if (!srv?.slideId || srv.slideId !== sid) return;
                             const localId = this.boxLocalId(sid, srv.id);
                             if (localId == null) return;
@@ -455,6 +711,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     this.observe(
                         this.socket.onBoundingBoxDeleted(),
                         (srv: any) => {
+                            this.logLock('socket:onBoundingBoxDeleted', srv);
                             if (!srv) return;
                             const serverId = srv.boundingBoxId || srv.id;
                             const localId = this.boxLocalId(sid, serverId);
@@ -462,8 +719,14 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             this.boxes.update((arr) =>
                                 arr.filter((b) => b.id !== localId)
                             );
-                            getOrCreateNestedMap(this.boxLocalToServer, sid).delete(localId);
-                            getOrCreateNestedMap(this.boxServerToLocal, sid).delete(serverId);
+                            getOrCreateNestedMap(
+                                this.boxLocalToServer,
+                                sid
+                            ).delete(localId);
+                            getOrCreateNestedMap(
+                                this.boxServerToLocal,
+                                sid
+                            ).delete(serverId);
                             clearPendingBox(this.pendingBoxes, sid, localId);
                             const sel = this.selection();
                             if (sel.type === 'box' && sel.id === localId) {
@@ -480,21 +743,85 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     this.observe(
                         this.socket.onSkeletalCreated(),
                         (srv: any) => {
+                            this.logLock('socket:onSkeletalCreated', srv);
                             const sid = this.currentSlideId();
                             if (!sid || srv?.slideId !== sid) return;
 
-                            const pendingMatch = takePendingPointMatch(this.pendingPoints, sid, srv);
+                            const clientTempRaw = String(
+                                (srv as any).clientTempId ?? ''
+                            ).trim();
+                            let pendingTempEntry: {
+                                by: string;
+                                instanceId: string;
+                            } | null = null;
+                            let pendingTempKey: string | null = null;
+                            let pendingTempPid: string | null = null;
+                            if (clientTempRaw) {
+                                const tempParts = clientTempRaw.split(':');
+                                if (tempParts.length === 2) {
+                                    const [remoteSkStr, remotePid] = tempParts;
+                                    if (remoteSkStr && remotePid) {
+                                        pendingTempKey = this.remoteSkelTempKey(
+                                            sid,
+                                            remoteSkStr,
+                                            remotePid
+                                        );
+                                        pendingTempEntry =
+                                            this.pendingRemoteSkelByTemp.get(
+                                                pendingTempKey
+                                            ) ?? null;
+                                        pendingTempPid = remotePid;
+                                    }
+                                }
+                            }
+
+                            const pendingMatch = takePendingPointMatch(
+                                this.pendingPoints,
+                                sid,
+                                srv
+                            );
                             if (pendingMatch) {
-                                linkPointIds(this.pointLocalToServer, this.pointServerToLocal, sid, pendingMatch.skId, pendingMatch.pid, srv.id);
+                                linkPointIds(
+                                    this.pointLocalToServer,
+                                    this.pointServerToLocal,
+                                    sid,
+                                    pendingMatch.skId,
+                                    pendingMatch.pid,
+                                    srv.id
+                                );
+                                this.tryApplyPendingSkelLock(sid, srv.id);
+                                if (pendingTempEntry && pendingTempKey) {
+                                    this.pendingRemoteSkelByTemp.delete(
+                                        pendingTempKey
+                                    );
+                                    this.addRemoteSkelLock(
+                                        pendingMatch.skId,
+                                        {
+                                            by: pendingTempEntry.by,
+                                            pid: pendingMatch.pid,
+                                            instanceId:
+                                                pendingTempEntry.instanceId,
+                                        },
+                                        1
+                                    );
+                                }
                                 this.skeletons.update((arr) =>
                                     arr.map((sk) => {
-                                        if (sk.id !== pendingMatch.skId) return sk;
-                                        const point = sk.points[pendingMatch.pid];
+                                        if (sk.id !== pendingMatch.skId)
+                                            return sk;
+                                        const point =
+                                            sk.points[pendingMatch.pid];
                                         if (!point) return sk;
                                         const updatedPoint = {
                                             ...point,
-                                            x: typeof srv.x_pos === 'number' ? srv.x_pos : point.x,
-                                            y: typeof srv.y_pos === 'number' ? srv.y_pos : point.y,
+                                            x:
+                                                typeof srv.x_pos === 'number'
+                                                    ? srv.x_pos
+                                                    : point.x,
+                                            y:
+                                                typeof srv.y_pos === 'number'
+                                                    ? srv.y_pos
+                                                    : point.y,
                                             isPending: false,
                                         };
                                         return {
@@ -503,28 +830,39 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                             labelId: srv.category ?? sk.labelId,
                                             points: {
                                                 ...sk.points,
-                                                [pendingMatch.pid]: updatedPoint,
+                                                [pendingMatch.pid]:
+                                                    updatedPoint,
                                             },
                                         };
                                     })
                                 );
-                                this.syncServerEdgesForPoint(sid, pendingMatch.skId, pendingMatch.pid);
+                                this.syncServerEdgesForPoint(
+                                    sid,
+                                    pendingMatch.skId,
+                                    pendingMatch.pid
+                                );
                                 this.requestPaint();
-                                const queuedUpdate =
-                                    this.pendingSkeletalUpdates
-                                        .get(sid)
-                                        ?.get(srv.id);
+                                const queuedUpdate = this.pendingSkeletalUpdates
+                                    .get(sid)
+                                    ?.get(srv.id);
                                 if (queuedUpdate) {
                                     this.applyServerSkeletalUpdate(
                                         sid,
-                                        queuedUpdate,
+                                        queuedUpdate
                                     );
                                 }
                                 return;
                             }
 
                             // 0) If this server id is already mapped, ignore (prevents duplicates)
-                            if (localPointOf(this.pointServerToLocal, sid, srv.id)) return;
+                            if (
+                                localPointOf(
+                                    this.pointServerToLocal,
+                                    sid,
+                                    srv.id
+                                )
+                            )
+                                return;
 
                             // 1) Try to reconcile optimistic create by clientTempId: "<skLocalId>:<pid>"
                             const temp = String(
@@ -541,13 +879,42 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                             !!sk.points[pid]
                                     );
                                     if (hasLocal) {
-                                        linkPointIds(this.pointLocalToServer, this.pointServerToLocal, 
+                                        linkPointIds(
+                                            this.pointLocalToServer,
+                                            this.pointServerToLocal,
                                             sid,
                                             skLocalId,
                                             pid,
                                             srv.id
                                         );
-                                        clearPendingPoint(this.pendingPoints, sid, skLocalId, pid);
+                                        this.tryApplyPendingSkelLock(
+                                            sid,
+                                            srv.id
+                                        );
+                                        if (
+                                            pendingTempEntry &&
+                                            pendingTempKey
+                                        ) {
+                                            this.pendingRemoteSkelByTemp.delete(
+                                                pendingTempKey
+                                            );
+                                            this.addRemoteSkelLock(
+                                                skLocalId,
+                                                {
+                                                    by: pendingTempEntry.by,
+                                                    pid,
+                                                    instanceId:
+                                                        pendingTempEntry.instanceId,
+                                                },
+                                                1
+                                            );
+                                        }
+                                        clearPendingPoint(
+                                            this.pendingPoints,
+                                            sid,
+                                            skLocalId,
+                                            pid
+                                        );
                                         const queuedUpdate =
                                             this.pendingSkeletalUpdates
                                                 .get(sid)
@@ -555,7 +922,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                         if (queuedUpdate) {
                                             this.applyServerSkeletalUpdate(
                                                 sid,
-                                                queuedUpdate,
+                                                queuedUpdate
                                             );
                                         }
                                         return;
@@ -587,15 +954,40 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                     edges: [],
                                 },
                             ]);
-                            linkPointIds(this.pointLocalToServer, this.pointServerToLocal, sid, localSkId, pid, srv.id);
-                            const queuedUpdate =
-                                this.pendingSkeletalUpdates
-                                    .get(sid)
-                                    ?.get(srv.id);
+                            linkPointIds(
+                                this.pointLocalToServer,
+                                this.pointServerToLocal,
+                                sid,
+                                localSkId,
+                                pid,
+                                srv.id
+                            );
+                            this.tryApplyPendingSkelLock(sid, srv.id);
+                            if (
+                                pendingTempEntry &&
+                                pendingTempKey &&
+                                pendingTempPid
+                            ) {
+                                this.pendingRemoteSkelByTemp.delete(
+                                    pendingTempKey
+                                );
+                                this.addRemoteSkelLock(
+                                    localSkId,
+                                    {
+                                        by: pendingTempEntry.by,
+                                        pid,
+                                        instanceId: pendingTempEntry.instanceId,
+                                    },
+                                    1
+                                );
+                            }
+                            const queuedUpdate = this.pendingSkeletalUpdates
+                                .get(sid)
+                                ?.get(srv.id);
                             if (queuedUpdate) {
                                 this.applyServerSkeletalUpdate(
                                     sid,
-                                    queuedUpdate,
+                                    queuedUpdate
                                 );
                             }
                             this.requestPaint();
@@ -608,6 +1000,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     this.observe(
                         this.socket.onSkeletalUpdated(),
                         (srv: any) => {
+                            this.logLock('socket:onSkeletalUpdated', srv);
                             const sid = this.currentSlideId();
                             if (!sid || srv?.slideId !== sid) return;
                             this.applyServerSkeletalUpdate(sid, srv);
@@ -620,10 +1013,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     this.observe(
                         this.socket.onSkeletalDeleted(),
                         (srv: any) => {
+                            this.logLock('socket:onSkeletalDeleted', srv);
                             const sid = this.currentSlideId();
                             if (!sid) return;
 
-                            const loc = localPointOf(this.pointServerToLocal, 
+                            const loc = localPointOf(
+                                this.pointServerToLocal,
                                 sid,
                                 srv.skeletalId || srv.id
                             );
@@ -652,23 +1047,50 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             });
 
                             this.unlinkPointId(sid, localSkId, pid);
-                            clearPendingPoint(this.pendingPoints, sid, localSkId, pid);
+                            clearPendingPoint(
+                                this.pendingPoints,
+                                sid,
+                                localSkId,
+                                pid
+                            );
 
                             const sel = this.selection();
-                            if (sel.type === 'point' && sel.id === localSkId && sel.pid === pid) {
-                                const stillExists = this.skeletons().some((sk) => sk.id === localSkId);
+                            if (
+                                sel.type === 'point' &&
+                                sel.id === localSkId &&
+                                sel.pid === pid
+                            ) {
+                                const stillExists = this.skeletons().some(
+                                    (sk) => sk.id === localSkId
+                                );
                                 if (stillExists) {
-                                    this.selection.set({ type: 'skeleton', id: localSkId });
+                                    this.selection.set({
+                                        type: 'skeleton',
+                                        id: localSkId,
+                                    });
                                     this.lastEditedSkId = localSkId;
                                 } else {
-                                    this.selection.set({ type: null, id: null });
-                                    if (this.lastEditedSkId === localSkId) this.lastEditedSkId = null;
+                                    this.selection.set({
+                                        type: null,
+                                        id: null,
+                                    });
+                                    if (this.lastEditedSkId === localSkId)
+                                        this.lastEditedSkId = null;
                                 }
-                            } else if (sel.type === 'skeleton' && sel.id === localSkId) {
-                                const stillExists = this.skeletons().some((sk) => sk.id === localSkId);
+                            } else if (
+                                sel.type === 'skeleton' &&
+                                sel.id === localSkId
+                            ) {
+                                const stillExists = this.skeletons().some(
+                                    (sk) => sk.id === localSkId
+                                );
                                 if (!stillExists) {
-                                    this.selection.set({ type: null, id: null });
-                                    if (this.lastEditedSkId === localSkId) this.lastEditedSkId = null;
+                                    this.selection.set({
+                                        type: null,
+                                        id: null,
+                                    });
+                                    if (this.lastEditedSkId === localSkId)
+                                        this.lastEditedSkId = null;
                                 }
                             }
 
@@ -790,18 +1212,30 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     private restoreSlideState(slideId: string) {
         this.clearIdMapsForSlide(slideId);
         this.clearPointMapsForSlide(slideId);
-        this.boxes.set(
-            (this.boxesBySlide.get(slideId) ?? []).map((b) => ({ ...b }))
-        );
-        this.skeletons.set(
-            (this.skeletonsBySlide.get(slideId) ?? []).map((sk) => ({
+        const cachedBoxes = (this.boxesBySlide.get(slideId) ?? []).map((b) => ({
+            ...b,
+        }));
+        for (const box of cachedBoxes) {
+            this.ensureBoxLabelIdForName(box.labelId);
+        }
+        this.boxes.set(cachedBoxes);
+
+        const cachedSkels = (this.skeletonsBySlide.get(slideId) ?? []).map(
+            (sk) => ({
                 ...sk,
                 points: { ...sk.points },
                 edges:
                     sk.edges?.map((e) => [e[0], e[1]] as [string, string]) ??
                     [],
-            }))
+            })
         );
+        for (const sk of cachedSkels) {
+            this.ensureSkelLabelIdForName(sk.labelId);
+            for (const kp of Object.values(sk.points)) {
+                this.ensureSkelLabelIdForName(kp.labelId);
+            }
+        }
+        this.skeletons.set(cachedSkels);
         // clear selection on slide switch
         this.selection.set({ type: null, id: null });
         this.requestPaint?.();
@@ -979,14 +1413,14 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     /* ---------- Data ---------- */
     boxLabels = signal<LabelDef[]>([
-        { id: 'box-bird', name: 'Bird' },
-        { id: 'box-wing', name: 'Wing' },
-        { id: 'box-head', name: 'Head' },
+        { id: 'Bird', name: 'Bird' },
+        { id: 'Wing', name: 'Wing' },
+        { id: 'Head', name: 'Head' },
     ]);
     skelLabels = signal<LabelDef[]>([
-        { id: 'kp-eye', name: 'Eye' },
-        { id: 'kp-beak', name: 'Beak' },
-        { id: 'kp-wingtip', name: 'Wing Tip' },
+        { id: 'Eye', name: 'Eye' },
+        { id: 'Beak', name: 'Beak' },
+        { id: 'Wing Tip', name: 'Wing Tip' },
     ]);
 
     // Active defaults (creation)
@@ -1067,6 +1501,10 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         this.ro?.disconnect();
         window.removeEventListener('keydown', this.onKeyDown);
         window.removeEventListener('keyup', this.onKeyUp);
+
+        this.releaseAllLocks();
+        this.pendingRemoteBoxLocks.clear();
+        this.pendingRemoteSkelLocks.clear();
 
         if (this.currentImgUrl) {
             URL.revokeObjectURL(this.currentImgUrl);
@@ -1278,11 +1716,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             const sk = this.skeletons().find((s) => s.id === skId);
             if (sk) {
                 for (const pid of Object.keys(sk.points)) {
-                    const srv = serverPointId(this.pointLocalToServer, sid, sk.id, pid);
+                    const srv = serverPointId(
+                        this.pointLocalToServer,
+                        sid,
+                        sk.id,
+                        pid
+                    );
                     if (srv) {
                         this.socket.updateSkeletal(sid, srv, {
                             color: sk.color,
-                            category: sk.labelId,
+                            category: this.skelCategoryValue(sk.labelId),
                         });
                     }
                 }
@@ -1290,19 +1733,70 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         }
     }
 
-    private slugify(name: string) {
-        return name
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/(^-|-$)/g, '');
+    private normalizeLabelName(name: string | null | undefined): string {
+        return (name ?? '').trim();
     }
-    private ensureUniqueId(base: string, taken: Set<string>) {
-        let id = base,
-            i = 2;
-        while (taken.has(id)) id = `${base}-${i++}`;
+
+    private categoryNameOrFallback(
+        name: string | null | undefined,
+        fallback: string
+    ): string {
+        const normalized = this.normalizeLabelName(name);
+        return normalized || fallback;
+    }
+
+    private ensureBoxLabelIdForName(name: string | null | undefined): string {
+        const display = this.categoryNameOrFallback(name, 'Unknown');
+        const current = this.boxLabels();
+        const existing = current.find(
+            (l) => l.name.toLowerCase() === display.toLowerCase()
+        );
+        if (existing) {
+            return existing.id;
+        }
+        const id = display;
+        this.boxLabels.set([...current, { id, name: display }]);
+        if (!this.activeLabelId()) {
+            this.activeLabelId.set(id);
+        }
         return id;
     }
+
+    private ensureSkelLabelIdForName(name: string | null | undefined): string {
+        const display = this.categoryNameOrFallback(name, 'Unknown');
+        const current = this.skelLabels();
+        const existing = current.find(
+            (l) => l.name.toLowerCase() === display.toLowerCase()
+        );
+        if (existing) {
+            return existing.id;
+        }
+        const id = display;
+        this.skelLabels.set([...current, { id, name: display }]);
+        if (!this.activeSkelLabelId()) {
+            this.activeSkelLabelId.set(id);
+        }
+        return id;
+    }
+
+    private boxCategoryValue(labelId: string | null | undefined): string {
+        const match = labelId
+            ? this.boxLabels().find(
+                  (l) => l.id.toLowerCase() === labelId.toLowerCase()
+              )
+            : undefined;
+        return match?.name ?? this.categoryNameOrFallback(labelId, 'Unknown');
+    }
+
+    private skelCategoryValue(labelId: string | null | undefined): string {
+        const match = labelId
+            ? this.skelLabels().find(
+                  (l) => l.id.toLowerCase() === labelId.toLowerCase()
+              )
+            : undefined;
+        return match?.name ?? this.categoryNameOrFallback(labelId, 'Unknown');
+    }
+
     boxLabelName = (id: string) =>
         this.boxLabels().find((l) => l.id === id)?.name ?? id;
     skelLabelName = (id: string) =>
@@ -1338,13 +1832,8 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     }
 
     addBoxLabel() {
-        const name = this.newBoxLabelName().trim();
+        const name = this.normalizeLabelName(this.newBoxLabelName());
         if (!name) return;
-        const taken = new Set(this.boxLabels().map((l) => l.id));
-        const base = `box-${this.slugify(name) || 'label'}`;
-        const id = this.ensureUniqueId(base, taken);
-
-        // prevent duplicate names (case-insensitive)
         if (
             this.boxLabels().some(
                 (l) => l.name.toLowerCase() === name.toLowerCase()
@@ -1358,6 +1847,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             return;
         }
 
+        const id = name;
         this.boxLabels.update((arr) => [...arr, { id, name }]);
         // if no active or the user just added the first, set active
         if (!this.activeLabelId() || this.boxLabels().length === 1)
@@ -1366,12 +1856,8 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     }
 
     addSkelLabel() {
-        const name = this.newSkelLabelName().trim();
+        const name = this.normalizeLabelName(this.newSkelLabelName());
         if (!name) return;
-        const taken = new Set(this.skelLabels().map((l) => l.id));
-        const base = `kp-${this.slugify(name) || 'label'}`;
-        const id = this.ensureUniqueId(base, taken);
-
         if (
             this.skelLabels().some(
                 (l) => l.name.toLowerCase() === name.toLowerCase()
@@ -1385,6 +1871,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             return;
         }
 
+        const id = name;
         this.skelLabels.update((arr) => [...arr, { id, name }]);
         if (!this.activeSkelLabelId() || this.skelLabels().length === 1)
             this.activeSkelLabelId.set(id);
@@ -1394,11 +1881,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             const sk = this.skeletons().find((s) => s.id === skId);
             if (sk) {
                 for (const pid of Object.keys(sk.points)) {
-                    const srv = serverPointId(this.pointLocalToServer, sid, sk.id, pid);
+                    const srv = serverPointId(
+                        this.pointLocalToServer,
+                        sid,
+                        sk.id,
+                        pid
+                    );
                     if (srv) {
                         this.socket.updateSkeletal(sid, srv, {
                             color: sk.color,
-                            category: sk.labelId,
+                            category: this.skelCategoryValue(sk.labelId),
                         });
                     }
                 }
@@ -1409,7 +1901,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     // --- Add: compact add/delete handlers (BOX) ---
     addBoxLabelPrompt() {
-        const name = (window.prompt('New box label name?') || '').trim();
+        const name = this.normalizeLabelName(
+            window.prompt('New box label name?') || ''
+        );
         if (!name) return;
 
         // case-insensitive duplicate name check
@@ -1426,17 +1920,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             return;
         }
 
-        const taken = new Set(this.boxLabels().map((l) => l.id));
-        const base = `box-${this.slugify(name) || 'label'}`;
-        const id = this.ensureUniqueId(base, taken);
-
+        const id = name;
         this.boxLabels.update((arr) => [...arr, { id, name }]);
         if (!this.activeLabelId()) this.activeLabelId.set(id);
     }
 
     // --- Add: compact add/delete handlers (SKELETON KEYPOINT) ---
     addSkelLabelPrompt() {
-        const name = (window.prompt('New keypoint label name?') || '').trim();
+        const name = this.normalizeLabelName(
+            window.prompt('New keypoint label name?') || ''
+        );
         if (!name) return;
 
         if (
@@ -1452,10 +1945,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             return;
         }
 
-        const taken = new Set(this.skelLabels().map((l) => l.id));
-        const base = `kp-${this.slugify(name) || 'label'}`;
-        const id = this.ensureUniqueId(base, taken);
-
+        const id = name;
         this.skelLabels.update((arr) => [...arr, { id, name }]);
         if (!this.activeSkelLabelId()) {
             this.activeSkelLabelId.set(id);
@@ -1465,11 +1955,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 const sk = this.skeletons().find((s) => s.id === skId);
                 if (sk) {
                     for (const pid of Object.keys(sk.points)) {
-                        const srv = serverPointId(this.pointLocalToServer, sid, sk.id, pid);
+                        const srv = serverPointId(
+                            this.pointLocalToServer,
+                            sid,
+                            sk.id,
+                            pid
+                        );
                         if (srv) {
                             this.socket.updateSkeletal(sid, srv, {
                                 color: sk.color,
-                                category: sk.labelId,
+                                category: this.skelCategoryValue(sk.labelId),
                             });
                         }
                     }
@@ -1555,11 +2050,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 const sk = this.skeletons().find((s) => s.id === skId);
                 if (sk) {
                     for (const pid of Object.keys(sk.points)) {
-                        const srv = serverPointId(this.pointLocalToServer, sid, sk.id, pid);
+                        const srv = serverPointId(
+                            this.pointLocalToServer,
+                            sid,
+                            sk.id,
+                            pid
+                        );
                         if (srv) {
                             this.socket.updateSkeletal(sid, srv, {
                                 color: sk.color,
-                                category: sk.labelId,
+                                category: this.skelCategoryValue(sk.labelId),
                             });
                         }
                     }
@@ -1594,11 +2094,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 const sk = this.skeletons().find((s) => s.id === skId);
                 if (sk) {
                     for (const pid of Object.keys(sk.points)) {
-                        const srv = serverPointId(this.pointLocalToServer, sid, sk.id, pid);
+                        const srv = serverPointId(
+                            this.pointLocalToServer,
+                            sid,
+                            sk.id,
+                            pid
+                        );
                         if (srv) {
                             this.socket.updateSkeletal(sid, srv, {
                                 color: sk.color,
-                                category: sk.labelId,
+                                category: this.skelCategoryValue(sk.labelId),
                             });
                         }
                     }
@@ -1656,17 +2161,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         if (!sid) return;
         const sk = this.skeletons().find((item) => item.id === s.id);
         if (!sk) return;
-        const srvId = serverPointId(
-            this.pointLocalToServer,
-            sid,
-            sk.id,
-            s.pid
-        );
+        const srvId = serverPointId(this.pointLocalToServer, sid, sk.id, s.pid);
         if (!srvId) return;
         const point = sk.points[s.pid];
         const neighborIds = this.serverNeighborIds(sid, sk, s.pid);
         this.socket.updateSkeletal(sid, srvId, {
-            category: point.labelId,
+            category: this.skelCategoryValue(point.labelId),
             color: sk.color,
             key_points: neighborIds.length ? neighborIds : null,
         });
@@ -1674,11 +2174,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     isSelected(type: 'box' | 'skeleton', id: number | string) {
         const s = this.selection();
-        if (type === 'box')
-            return s.type === 'box' && s.id === Number(id);
+        if (type === 'box') return s.type === 'box' && s.id === Number(id);
         if (type === 'skeleton')
-            return (s.type === 'skeleton' || s.type === 'point') &&
-                s.id === Number(id);
+            return (
+                (s.type === 'skeleton' || s.type === 'point') &&
+                s.id === Number(id)
+            );
         return false;
     }
     selectEntity(type: 'box' | 'skeleton', id: number | string) {
@@ -2227,14 +2728,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 );
                 const id = this.idSeq++;
                 tempId = id;
-                const sid = this.currentSlideId();
-                const uid = this.me();
-                if (sid && uid)
-                    this.socket.boxTouch({
-                        slideId: sid,
-                        userId: uid,
-                        boxId: id,
-                    });
                 const newBox: BoxAnn = {
                     id,
                     x: startImg.x,
@@ -2273,13 +2766,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     const sid = this.currentSlideId();
                     const uid = this.me();
                     if (sid && uid) {
-                        // STOP touching
-                        this.socket.boxUnTouch({
-                            slideId: sid,
-                            userId: uid,
-                            boxId: tempId,
-                        });
-
                         // EMIT CREATE with clientTempId to reconcile
                         const box = this.boxes().find((b) => b.id === tempId);
                         if (box) {
@@ -2290,7 +2776,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                 x_long: box.w,
                                 y_long: box.h,
                                 color: box.color,
-                                category: box.labelId,
+                                category: this.boxCategoryValue(box.labelId),
                                 clientTempId: String(tempId), // <- critical for mapping
                             });
                         }
@@ -2338,17 +2824,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     draggingPoint = ptHit;
                     lastImg = pImg;
                     this.lastEditedSkId = ptHit.skId;
-                    // EMIT touch (point-level)
-                    const sid = this.currentSlideId();
-                    const uid = this.me();
-                    if (sid && uid)
-                        this.socket.skeletalTouch({
-                            slideId: sid,
-                            userId: uid,
-                            skeletalId: ptHit.skId,
-                            pointId: ptHit.pid,
-                        });
-
                     ctx.requestPaint();
                     return;
                 }
@@ -2362,18 +2837,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     draggingSkeletonId = boneHit.skId;
                     lastImg = pImg;
 
-                    this.lastEditedSkId =
-                        boneHit.skId /* or the selected skeleton id */;
-                    // EMIT touch (skeleton-level)
-                    const sid = this.currentSlideId();
-                    const uid = this.me();
-                    if (sid && uid)
-                        this.socket.skeletalTouch({
-                            slideId: sid,
-                            userId: uid,
-                            skeletalId: boneHit.skId,
-                        });
-
+                    this.lastEditedSkId = boneHit.skId;
                     ctx.requestPaint();
                     return;
                 }
@@ -2396,16 +2860,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     corner = hitCorner.c as Corner;
                     lastImg = pImg;
 
-                    // EMIT touch start
-                    const sid = this.currentSlideId();
-                    const uid = this.me();
-                    if (sid && uid)
-                        this.socket.boxTouch({
-                            slideId: sid,
-                            userId: uid,
-                            boxId: resizingId,
-                        });
-
                     ctx.requestPaint();
                     return;
                 }
@@ -2420,15 +2874,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     this.selection.set({ type: 'box', id: hitBorder.id });
                     draggingBoxId = hitBorder.id as Id;
                     lastImg = pImg;
-
-                    const sid = this.currentSlideId();
-                    const uid = this.me();
-                    if (sid && uid)
-                        this.socket.boxTouch({
-                            slideId: sid,
-                            userId: uid,
-                            boxId: draggingBoxId,
-                        });
 
                     ctx.requestPaint();
                     return;
@@ -2447,16 +2892,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
                     draggingBoxId = sel.id;
                     lastImg = pImg;
-
-                    // EMIT touch start
-                    const sid = this.currentSlideId();
-                    const uid = this.me();
-                    if (sid && uid)
-                        this.socket.boxTouch({
-                            slideId: sid,
-                            userId: uid,
-                            boxId: draggingBoxId,
-                        });
 
                     ctx.requestPaint();
                     return;
@@ -2612,49 +3047,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             },
 
             onUp: (_e, ctx) => {
-                if (draggingBoxId != null) {
-                    const sid = this.currentSlideId();
-                    const uid = this.me();
-                    if (sid && uid)
-                        this.socket.boxUnTouch({
-                            slideId: sid,
-                            userId: uid,
-                            boxId: draggingBoxId,
-                        });
-                }
-                if (resizingId != null) {
-                    const sid = this.currentSlideId();
-                    const uid = this.me();
-                    if (sid && uid)
-                        this.socket.boxUnTouch({
-                            slideId: sid,
-                            userId: uid,
-                            boxId: resizingId,
-                        });
-                }
-
-                if (draggingPoint) {
-                    const sid = this.currentSlideId();
-                    const uid = this.me();
-                    if (sid && uid)
-                        this.socket.skeletalUnTouch({
-                            slideId: sid,
-                            userId: uid,
-                            skeletalId: draggingPoint.skId,
-                            pointId: draggingPoint.pid,
-                        });
-                }
-                if (draggingSkeletonId != null) {
-                    const sid = this.currentSlideId();
-                    const uid = this.me();
-                    if (sid && uid)
-                        this.socket.skeletalUnTouch({
-                            slideId: sid,
-                            userId: uid,
-                            skeletalId: draggingSkeletonId,
-                        });
-                }
-
                 // BOX UPDATED?
                 const sid = this.currentSlideId();
                 if (sid && (draggingBoxId != null || resizingId != null)) {
@@ -2668,7 +3060,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             x_long: box.w,
                             y_long: box.h,
                             color: box.color,
-                            category: box.labelId,
+                            category: this.boxCategoryValue(box.labelId),
                         });
                     }
                 }
@@ -2683,20 +3075,27 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             /* no-op */
                         } else {
                             // server skeletal id here must refer to THIS point in the DB model
-                            const srvPointId = serverPointId(this.pointLocalToServer, 
+                            const srvPointId = serverPointId(
+                                this.pointLocalToServer,
                                 sid,
                                 skId,
                                 pid
                             ); // see note below
                             if (srvPointId) {
                                 const p = sk.points[pid];
-                                const neighborIds = this.serverNeighborIds(sid, sk, pid);
+                                const neighborIds = this.serverNeighborIds(
+                                    sid,
+                                    sk,
+                                    pid
+                                );
                                 this.socket.updateSkeletal(sid, srvPointId, {
                                     x_pos: p.x,
                                     y_pos: p.y,
                                     color: sk.color,
-                                    category: p.labelId,
-                                    key_points: neighborIds.length ? neighborIds : null,
+                                    category: this.skelCategoryValue(p.labelId),
+                                    key_points: neighborIds.length
+                                        ? neighborIds
+                                        : null,
                                 });
                             }
                         }
@@ -2708,20 +3107,27 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         );
                         if (sk) {
                             for (const pid of Object.keys(sk.points)) {
-                                const srvPointId = serverPointId(this.pointLocalToServer, 
+                                const srvPointId = serverPointId(
+                                    this.pointLocalToServer,
                                     sid,
                                     sk.id,
                                     pid
                                 ); // see note below
                                 if (!srvPointId) continue;
                                 const p = sk.points[pid];
-                                const neighborIds = this.serverNeighborIds(sid, sk, pid);
+                                const neighborIds = this.serverNeighborIds(
+                                    sid,
+                                    sk,
+                                    pid
+                                );
                                 this.socket.updateSkeletal(sid, srvPointId, {
                                     x_pos: p.x,
                                     y_pos: p.y,
                                     color: sk.color,
-                                    category: p.labelId,
-                                    key_points: neighborIds.length ? neighborIds : null,
+                                    category: this.skelCategoryValue(p.labelId),
+                                    key_points: neighborIds.length
+                                        ? neighborIds
+                                        : null,
                                 });
                             }
                         }
@@ -2761,6 +3167,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         }): { sk: SkeletonAnn; pid: string } => {
             const id = this.idSeq++;
             const pid = 'p' + this.pointSeq++;
+            const activeLabelId = this.ensureSkelLabelIdForName(
+                this.activeSkelLabelId()
+            );
             const sk: SkeletonAnn = {
                 id,
                 points: {
@@ -2769,12 +3178,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         x: p.x,
                         y: p.y,
                         v: 2,
-                        labelId: this.activeSkelLabelId(),
+                        labelId: activeLabelId,
                         isPending: true,
                     },
                 },
                 edges: [] as [string, string][],
-                labelId: this.activeSkelLabelId(),
+                labelId: activeLabelId,
                 color: this.activeSkelColor(), // default; user can change in sidebar
             };
             this.skeletons.update((arr) => [...arr, sk]);
@@ -2787,10 +3196,18 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     y_pos: p.y,
                     key_points: null,
                     color: sk.color, // for first point use skeleton color
-                    category: this.activeSkelLabelId(),
+                    category: this.skelCategoryValue(activeLabelId),
                     clientTempId: `${sk.id}:${pid}`,
                 });
-                markPendingPoint(this.pendingPoints, sid, sk.id, pid, sk.points[pid], sk.color, sk.labelId);
+                markPendingPoint(
+                    this.pendingPoints,
+                    sid,
+                    sk.id,
+                    pid,
+                    sk.points[pid],
+                    sk.color,
+                    sk.points[pid].labelId
+                );
             }
             // after you build `sk` and push to `this.skeletons`
             this.lastEditedSkId = sk.id;
@@ -2800,9 +3217,13 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
         const addPointToSkeleton = (
             sk: SkeletonAnn,
-            p: { x: number; y: number }
+            p: { x: number; y: number },
+            labelHint?: string
         ): { pid: string } => {
             const pid = 'p' + this.pointSeq++;
+            const baseLabelId =
+                labelHint ?? sk.labelId ?? this.activeSkelLabelId();
+            const pointLabelId = this.ensureSkelLabelIdForName(baseLabelId);
             const next: SkeletonAnn = {
                 ...sk,
                 points: {
@@ -2812,7 +3233,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         x: p.x,
                         y: p.y,
                         v: 2,
-                        labelId: this.activeSkelLabelId(),
+                        labelId: pointLabelId,
                         isPending: true,
                     },
                 },
@@ -2831,10 +3252,19 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     y_pos: p.y,
                     key_points: null,
                     color: sk.color, // for first point use skeleton color
-                    category: this.activeSkelLabelId(),
+                    category: this.skelCategoryValue(pointLabelId),
                     clientTempId: `${sk.id}:${pid}`,
                 });
-                markPendingPoint(this.pendingPoints, sid, sk.id, pid, newPoint ?? next.points[pid], sk.color, sk.labelId);
+                const pendingPoint = newPoint ?? next.points[pid];
+                markPendingPoint(
+                    this.pendingPoints,
+                    sid,
+                    sk.id,
+                    pid,
+                    pendingPoint,
+                    sk.color,
+                    pendingPoint.labelId
+                );
             }
             return { pid };
         };
@@ -2858,20 +3288,26 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         };
 
         const mergeSkeletons = (keepId: Id, dropId: Id) => {
+            const sid = this.currentSlideId();
             let keep = this.skeletons().find((s) => s.id === keepId)!;
             let drop = this.skeletons().find((s) => s.id === dropId)!;
             // move points
             const movedPts: Record<string, Keypoint> = { ...keep.points };
+            const renameMap = new Map<string, string>();
             for (const [pid, kp] of Object.entries(drop.points)) {
-                const npid = movedPts[pid] ? 'm' + pid : pid;
+                let npid = pid;
+                while (movedPts[npid]) {
+                    npid = `m${npid}`;
+                }
+                renameMap.set(pid, npid);
                 movedPts[npid] = { ...kp, id: npid };
             }
             // move edges (remap pids if we ever renamed)
             const movedEdges: [string, string][] = [...keep.edges];
+            const remapPid = (pid: string) => renameMap.get(pid) ?? pid;
             for (const [a, b] of drop.edges) {
-                // if you remap pids, do that first
-                const aa = movedPts[a] ? a : 'm' + a in movedPts ? 'm' + a : a;
-                const bb = movedPts[b] ? b : 'm' + b in movedPts ? 'm' + b : b;
+                const aa = remapPid(a);
+                const bb = remapPid(b);
                 if (
                     !movedEdges.some(
                         ([x, y]) =>
@@ -2891,6 +3327,39 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 const filtered = arr.filter((s) => s.id !== dropId);
                 return filtered.map((s) => (s.id === keepId ? merged : s));
             });
+
+            if (sid) {
+                const l2sMap = getOrCreateNestedMap(
+                    this.pointLocalToServer,
+                    sid
+                );
+                const s2lMap = getOrCreateNestedMap(
+                    this.pointServerToLocal,
+                    sid
+                );
+                const pendingMap = this.pendingPoints.get(sid);
+
+                for (const [oldPid, newPid] of renameMap) {
+                    const oldKey = pLocKey(dropId, oldPid);
+                    const srvId = l2sMap.get(oldKey);
+                    if (srvId) {
+                        l2sMap.delete(oldKey);
+                        l2sMap.set(pLocKey(keepId, newPid), srvId);
+                        s2lMap.set(srvId, { sk: keepId, pid: newPid });
+                    }
+                    if (pendingMap) {
+                        const snap = pendingMap.get(oldKey);
+                        if (snap) {
+                            pendingMap.delete(oldKey);
+                            pendingMap.set(pLocKey(keepId, newPid), {
+                                ...snap,
+                                skId: keepId,
+                                pid: newPid,
+                            });
+                        }
+                    }
+                }
+            }
         };
 
         const clickExistingPoint = (
@@ -2944,7 +3413,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             if (sel.type === 'point') {
                 // add new point, connect to previous
                 const sk = this.skeletons().find((s) => s.id === sel.id)!;
-                const { pid: newPid } = addPointToSkeleton(sk, pImg);
+                const sourcePoint = sk.points[sel.pid];
+                const { pid: newPid } = addPointToSkeleton(
+                    sk,
+                    pImg,
+                    sourcePoint?.labelId ?? sk.labelId
+                );
                 ensureEdge(
                     this.skeletons().find((s) => s.id === sel.id)!,
                     sel.pid,
@@ -2972,15 +3446,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 const hit = this.hitTestPoint(e.clientX, e.clientY);
                 if (hit) {
                     if (this.isSkelLockedForMe(hit.skId)) return;
-                    const sid = this.currentSlideId();
-                    const uid = this.me();
-                    if (sid && uid)
-                        this.socket.skeletalTouch({
-                            slideId: sid,
-                            userId: uid,
-                            skeletalId: hit.skId,
-                            pointId: hit.pid,
-                        });
                     clickExistingPoint(hit, ctrl);
                     return;
                 }
@@ -3073,10 +3538,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 const srvId = this.boxServerId(sid, s.id);
                 if (srvId) {
                     this.socket.deleteBoundingBox(sid, srvId);
-                    getOrCreateNestedMap(
-                        this.boxServerToLocal,
-                        sid
-                    ).delete(srvId);
+                    getOrCreateNestedMap(this.boxServerToLocal, sid).delete(
+                        srvId
+                    );
                 }
                 getOrCreateNestedMap(this.boxLocalToServer, sid).delete(s.id);
                 clearPendingBox(this.pendingBoxes, sid, s.id);
@@ -3136,7 +3600,10 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             if (arr.some((x) => x.id === incoming.id)) return arr;
 
             // Only replace if we still have a pending record for this key
-            const canReplace = this.pendingTracker.consume(current!, pendingKey);
+            const canReplace = this.pendingTracker.consume(
+                current!,
+                pendingKey
+            );
 
             if (canReplace) {
                 // Find the optimistic candidate: same user/content and marked pending
@@ -3169,6 +3636,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     disconnectFromSlide() {
         this.disposeSocketHandlers();
+        this.releaseAllLocks();
+        this.pendingRemoteBoxLocks.clear();
+        this.pendingRemoteSkelLocks.clear();
         this.socket.disconnect();
         this.pendingOptimistic = [];
         this.pendingTracker.clear();
@@ -3435,8 +3905,51 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     }
 
     // === Locks (who is touching what) ===
-    boxLocks = signal<Map<Id, string>>(new Map());
-    skelLocks = signal<Map<Id, { by: string; pid?: string }>>(new Map());
+    boxLocks = signal<Map<Id, { by: string; instanceId?: string }>>(new Map());
+    skelLocks = signal<
+        Map<Id, { by: string; pid?: string; instanceId?: string }>
+    >(new Map());
+    private heldBoxLock: {
+        slideId: string;
+        boxId: Id;
+        serverId?: string | null;
+    } | null = null;
+    private heldSkelLock: {
+        slideId: string;
+        skelId: Id;
+        pointId?: string;
+        pointServerId?: string | null;
+    } | null = null;
+    private pendingRemoteBoxLocks = new Map<
+        string,
+        { by: string; instanceId?: string }
+    >();
+    private pendingRemoteSkelLocks = new Map<
+        string,
+        { by: string; instanceId?: string; pid?: string; count: number }
+    >();
+    private pendingRemoteSkelByTemp = new Map<
+        string,
+        { by: string; instanceId: string }
+    >();
+    private remoteSkelLockState = new Map<
+        Id,
+        Map<
+            string,
+            {
+                count: number;
+                by: string;
+                pid?: string;
+                instanceId: string;
+                releaseTimer?: ReturnType<typeof setTimeout> | null;
+            }
+        >
+    >();
+    private readonly remoteSkelReleaseDelayMs = 1000;
+
+    private logLock(...args: any[]) {
+        console.log('[Lock]', ...args);
+    }
 
     private anonUserKey = 'anno-guest-user-id';
     private resolveUserId(): string {
@@ -3456,26 +3969,579 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     isBoxLockedForMe = (id: Id) => {
         const l = this.boxLocks().get(id);
-        return !!l && l !== this.me();
+        const me = this.me();
+        const myInstance = this.socket.clientInstanceId;
+        const locked =
+            !!l &&
+            !(l.by === me && (!l.instanceId || l.instanceId === myInstance));
+        this.logLock('isBoxLockedForMe', {
+            id,
+            lockedBy: l?.by,
+            instanceId: l?.instanceId,
+            me,
+            myInstance,
+            locked,
+        });
+        return locked;
     };
 
     isSkelLockedForMe = (id: Id) => {
         const l = this.skelLocks().get(id);
-        return !!l && l.by !== this.me();
+        const me = this.me();
+        const myInstance = this.socket.clientInstanceId;
+        const locked =
+            !!l &&
+            !(l.by === me && (!l.instanceId || l.instanceId === myInstance));
+        this.logLock('isSkelLockedForMe', {
+            id,
+            lockedBy: l?.by,
+            pid: l?.pid,
+            instanceId: l?.instanceId,
+            me,
+            myInstance,
+            locked,
+        });
+        return locked;
     };
 
     // helpers to mutate the maps immutably (so signals fire)
-    private setBoxLock(id: Id, byUser: string | null) {
+    private setBoxLock(
+        id: Id,
+        payload: { by: string; instanceId?: string } | null
+    ) {
         const next = new Map(this.boxLocks());
-        if (byUser) next.set(id, byUser);
+        if (payload) next.set(id, payload);
         else next.delete(id);
+        this.logLock('setBoxLock', {
+            id,
+            payload,
+            map: Array.from(next.entries()).map(([k, v]) => [
+                k,
+                { by: v.by, instanceId: v.instanceId },
+            ]),
+        });
         this.boxLocks.set(next);
     }
-    private setSkelLock(id: Id, payload: { by: string; pid?: string } | null) {
+    private setSkelLockSignal(
+        id: Id,
+        payload: { by: string; pid?: string; instanceId?: string } | null
+    ) {
         const next = new Map(this.skelLocks());
         if (payload) next.set(id, payload);
         else next.delete(id);
         this.skelLocks.set(next);
+    }
+    private refreshRemoteSkelSignal(id: Id) {
+        const state = this.remoteSkelLockState.get(id);
+        if (!state || state.size === 0) {
+            this.setSkelLockSignal(id, null);
+            return;
+        }
+
+        // Only consider actively-held entries (count > 0).
+        const active = Array.from(state.values()).filter((e) => e.count > 0);
+
+        if (active.length === 0) {
+            this.setSkelLockSignal(id, null);
+            return;
+        }
+
+        const mine = this.socket.clientInstanceId;
+        const chosen = active.find((e) => e.instanceId !== mine) ?? active[0];
+
+        this.setSkelLockSignal(id, {
+            by: chosen.by,
+            pid: chosen.pid,
+            instanceId: chosen.instanceId,
+        });
+    }
+
+    private addRemoteSkelLock(
+        id: Id,
+        payload: { by: string; pid?: string; instanceId?: string },
+        count = 1
+    ) {
+        const by = (payload.by ?? '').trim();
+        const instanceId = (payload.instanceId ?? by).trim();
+        if (!by || !instanceId || count <= 0) return;
+        const map =
+            this.remoteSkelLockState.get(id) ??
+            new Map<
+                string,
+                {
+                    count: number;
+                    by: string;
+                    pid?: string;
+                    instanceId: string;
+                    releaseTimer?: ReturnType<typeof setTimeout> | null;
+                }
+            >();
+        let entry = map.get(instanceId);
+        if (!entry) {
+            entry = {
+                count: 0,
+                by,
+                pid: payload.pid,
+                instanceId,
+                releaseTimer: null,
+            };
+        } else if (entry.releaseTimer) {
+            clearTimeout(entry.releaseTimer);
+            entry.releaseTimer = null;
+        }
+        entry.count = 1;
+        entry.by = by;
+        if (payload.pid !== undefined) entry.pid = payload.pid;
+        map.set(instanceId, entry);
+        this.remoteSkelLockState.set(id, map);
+        this.logLock('addRemoteSkelLock', { id, entry, count });
+        this.refreshRemoteSkelSignal(id);
+    }
+    // --- 1) make removeRemoteSkelLock robust to missing instanceId
+    private removeRemoteSkelLock(
+        id: Id,
+        instanceIdRaw: string | undefined,
+        _count = 1, // ignored (toggle semantics)
+        byRaw?: string // fallback match by user if instance is missing
+    ) {
+        const instanceId = (instanceIdRaw ?? '').trim();
+        const by = (byRaw ?? '').trim();
+        const map = this.remoteSkelLockState.get(id);
+        if (!map) return;
+
+        // Prefer instanceId; fall back to matching by user id
+        let key: string | undefined =
+            instanceId && map.has(instanceId) ? instanceId : undefined;
+        if (!key && by) {
+            for (const [k, e] of map) {
+                if ((e.by ?? '') === by) {
+                    key = k;
+                    break;
+                }
+            }
+        }
+        if (!key) return;
+
+        const entry = map.get(key)!;
+
+        // If there was an old timer, cancel it - we're scheduling a fresh one
+        if (entry.releaseTimer) {
+            clearTimeout(entry.releaseTimer);
+            entry.releaseTimer = null;
+        }
+
+        // IMPORTANT: do NOT zero the count here and do NOT refresh now.
+        // Keep the lock 'active' during the grace period to avoid flicker.
+        const timer = setTimeout(() => {
+            const currentMap = this.remoteSkelLockState.get(id);
+            if (!currentMap) return;
+
+            const current = currentMap.get(key!);
+            if (!current || current.releaseTimer !== timer) return;
+
+            // Now actually remove it and update the signal
+            currentMap.delete(key!);
+            if (currentMap.size === 0) this.remoteSkelLockState.delete(id);
+            else this.remoteSkelLockState.set(id, currentMap);
+
+            this.logLock('removeRemoteSkelLock:timer-release', {
+                id,
+                instanceId: key,
+                by,
+            });
+            this.refreshRemoteSkelSignal(id); // only refresh when the timer fires
+        }, this.remoteSkelReleaseDelayMs);
+
+        entry.releaseTimer = timer;
+        map.set(key, entry);
+        this.remoteSkelLockState.set(id, map);
+
+        // NO immediate refresh here - keeps the lock visible during the delay
+        this.logLock('removeRemoteSkelLock:schedule', {
+            id,
+            instanceId: key,
+            by,
+            delay: this.remoteSkelReleaseDelayMs,
+        });
+    }
+
+    private syncSelectionLocks(slideId: string | null, sel: Selection) {
+        this.logLock('syncSelectionLocks:start', {
+            slideId,
+            selection: sel,
+            heldBox: this.heldBoxLock,
+            heldSkel: this.heldSkelLock,
+        });
+        if (this.heldBoxLock && this.heldBoxLock.slideId !== slideId) {
+            this.releaseBoxLock();
+        }
+        if (this.heldSkelLock && this.heldSkelLock.slideId !== slideId) {
+            this.releaseSkelLock();
+        }
+
+        const desiredBoxId =
+            slideId && sel.type === 'box' && typeof sel.id === 'number'
+                ? sel.id
+                : null;
+        const desiredSkel =
+            slideId && typeof sel.id === 'number'
+                ? sel.type === 'point'
+                    ? { skId: sel.id, pointId: sel.pid }
+                    : sel.type === 'skeleton'
+                    ? { skId: sel.id, pointId: undefined }
+                    : null
+                : null;
+
+        if (
+            this.heldBoxLock &&
+            (!desiredBoxId ||
+                this.heldBoxLock.boxId !== desiredBoxId ||
+                this.heldBoxLock.slideId !== slideId)
+        ) {
+            this.releaseBoxLock();
+        }
+        if (
+            this.heldSkelLock &&
+            (!desiredSkel ||
+                this.heldSkelLock.skelId !== desiredSkel.skId ||
+                this.heldSkelLock.slideId !== slideId ||
+                this.heldSkelLock.pointId !== desiredSkel.pointId)
+        ) {
+            this.releaseSkelLock();
+        }
+
+        if (
+            slideId &&
+            desiredBoxId != null &&
+            (!this.heldBoxLock ||
+                this.heldBoxLock.boxId !== desiredBoxId ||
+                this.heldBoxLock.slideId !== slideId)
+        ) {
+            this.acquireBoxLock(slideId, desiredBoxId);
+        } else if (
+            slideId &&
+            desiredBoxId != null &&
+            this.heldBoxLock &&
+            this.heldBoxLock.slideId === slideId &&
+            this.heldBoxLock.boxId === desiredBoxId
+        ) {
+            const srvId = this.boxServerId(slideId, desiredBoxId);
+            if (srvId && this.heldBoxLock.serverId !== srvId) {
+                this.heldBoxLock = {
+                    ...this.heldBoxLock,
+                    serverId: srvId,
+                };
+                const uid = this.me().trim();
+                if (uid) {
+                    const payload: any = {
+                        slideId,
+                        userId: uid,
+                        boxId: desiredBoxId,
+                        boundingBoxId: srvId,
+                    };
+                    this.logLock('syncSelectionLocks:rebroadcast boxTouch', {
+                        payload,
+                    });
+                    this.socket.boxTouch(payload);
+                }
+            }
+        }
+
+        if (
+            slideId &&
+            desiredSkel &&
+            (!this.heldSkelLock ||
+                this.heldSkelLock.slideId !== slideId ||
+                this.heldSkelLock.skelId !== desiredSkel.skId ||
+                this.heldSkelLock.pointId !== desiredSkel.pointId)
+        ) {
+            this.acquireSkelLock(
+                slideId,
+                desiredSkel.skId,
+                desiredSkel.pointId
+            );
+        } else if (
+            slideId &&
+            desiredSkel &&
+            this.heldSkelLock &&
+            this.heldSkelLock.slideId === slideId &&
+            this.heldSkelLock.skelId === desiredSkel.skId
+        ) {
+            const nextServerId = this.pointServerIdForLock(
+                slideId,
+                desiredSkel.skId,
+                desiredSkel.pointId ?? this.heldSkelLock.pointId
+            );
+            if (
+                nextServerId &&
+                this.heldSkelLock.pointServerId !== nextServerId
+            ) {
+                this.heldSkelLock = {
+                    ...this.heldSkelLock,
+                    pointServerId: nextServerId,
+                };
+                const uid = this.me().trim();
+                if (uid) {
+                    const payload: any = {
+                        slideId,
+                        userId: uid,
+                        skeletalId: desiredSkel.skId,
+                        pointServerId: nextServerId,
+                    };
+                    if (desiredSkel.pointId) {
+                        payload.pointId = desiredSkel.pointId;
+                    }
+                    this.logLock(
+                        'syncSelectionLocks:rebroadcast skeletalTouch',
+                        {
+                            payload,
+                        }
+                    );
+                    this.socket.skeletalTouch(payload);
+                }
+            }
+        }
+        this.logLock('syncSelectionLocks:end', {
+            heldBox: this.heldBoxLock,
+            heldSkel: this.heldSkelLock,
+        });
+    }
+
+    private acquireBoxLock(slideId: string, boxId: Id) {
+        const uid = this.me().trim();
+        if (!uid) return;
+        const srvId = this.boxServerId(slideId, boxId);
+        const payload: any = {
+            slideId,
+            userId: uid,
+            boxId,
+        };
+        if (srvId) payload.boundingBoxId = srvId;
+        this.logLock('acquireBoxLock:emit', payload);
+        this.socket.boxTouch(payload);
+        this.heldBoxLock = { slideId, boxId, serverId: srvId ?? null };
+        this.logLock('acquireBoxLock:held', this.heldBoxLock);
+    }
+
+    private releaseBoxLock() {
+        const lock = this.heldBoxLock;
+        if (!lock) return;
+        this.heldBoxLock = null;
+        const { slideId, boxId, serverId } = lock;
+        const uid = this.me().trim();
+        if (!uid) return;
+        const srvId = serverId ?? this.boxServerId(slideId, boxId) ?? undefined;
+        const payload: any = {
+            slideId,
+            userId: uid,
+            boxId,
+        };
+        if (srvId) payload.boundingBoxId = srvId;
+        this.logLock('releaseBoxLock:emit', payload);
+        this.socket.boxUnTouch(payload);
+    }
+
+    private acquireSkelLock(slideId: string, skelId: Id, pointId?: string) {
+        const uid = this.me().trim();
+        if (!uid) return;
+        const pointServerId = this.pointServerIdForLock(
+            slideId,
+            skelId,
+            pointId
+        );
+        const payload: any = {
+            slideId,
+            userId: uid,
+            skeletalId: skelId,
+        };
+        if (pointId) payload.pointId = pointId;
+        if (pointServerId) payload.pointServerId = pointServerId;
+        this.logLock('acquireSkelLock:emit', payload);
+        this.socket.skeletalTouch(payload);
+        this.heldSkelLock = {
+            slideId,
+            skelId,
+            pointId,
+            pointServerId: pointServerId ?? null,
+        };
+        this.logLock('acquireSkelLock:held', this.heldSkelLock);
+    }
+
+    private releaseSkelLock() {
+        const lock = this.heldSkelLock;
+        if (!lock) return;
+        this.heldSkelLock = null;
+
+        const { slideId, skelId, pointId, pointServerId } = lock;
+        const uid = this.me().trim();
+        if (!uid) return;
+
+        // Try to resolve server point id again, even if we didn't have it when we acquired.
+        const resolvedPointServerId =
+            pointServerId ??
+            this.pointServerIdForLock(slideId, skelId, pointId);
+
+        const payload: any = {
+            slideId,
+            userId: uid,
+            skeletalId: skelId,
+        };
+        if (pointId) payload.pointId = pointId;
+        if (resolvedPointServerId)
+            payload.pointServerId = resolvedPointServerId;
+
+        this.logLock('releaseSkelLock:emit', payload);
+        this.socket.skeletalUnTouch(payload);
+    }
+
+    private releaseAllLocks() {
+        this.releaseBoxLock();
+        this.releaseSkelLock();
+    }
+
+    private pendingBoxKey(slideId: string, serverId: string) {
+        return `${slideId}::${serverId}`;
+    }
+    private queuePendingBoxLock(
+        slideId: string,
+        serverId: string,
+        payload: { by: string; instanceId?: string }
+    ) {
+        this.logLock('queuePendingBoxLock', { slideId, serverId, payload });
+        this.pendingRemoteBoxLocks.set(
+            this.pendingBoxKey(slideId, serverId),
+            payload
+        );
+    }
+    private clearPendingBoxLock(slideId: string, serverId: string) {
+        this.logLock('clearPendingBoxLock', { slideId, serverId });
+        this.pendingRemoteBoxLocks.delete(
+            this.pendingBoxKey(slideId, serverId)
+        );
+    }
+    private tryApplyPendingBoxLock(slideId: string, serverId: string) {
+        const key = this.pendingBoxKey(slideId, serverId);
+        const pending = this.pendingRemoteBoxLocks.get(key);
+        if (!pending) return;
+        const localId = this.boxLocalId(slideId, serverId);
+        if (localId == null) return;
+        this.logLock('tryApplyPendingBoxLock', {
+            slideId,
+            serverId,
+            localId,
+            pending,
+        });
+        this.setBoxLock(localId, pending);
+        this.pendingRemoteBoxLocks.delete(key);
+        this.requestPaint();
+    }
+
+    private pendingSkelKey(slideId: string, pointServerId: string) {
+        return `${slideId}::${pointServerId}`;
+    }
+    private remoteSkelTempKey(
+        slideId: string,
+        remoteSkId: number | string,
+        pid: string
+    ) {
+        return `${slideId}::${remoteSkId}::${pid}`;
+    }
+    private queuePendingSkelLock(
+        slideId: string,
+        pointServerId: string,
+        payload: {
+            by: string;
+            instanceId?: string;
+            pid?: string;
+            count?: number;
+        }
+    ) {
+        const key = this.pendingSkelKey(slideId, pointServerId);
+        const existing = this.pendingRemoteSkelLocks.get(key);
+        if (existing) {
+            existing.by = payload.by;
+            if (payload.instanceId) existing.instanceId = payload.instanceId;
+            if (payload.pid !== undefined) existing.pid = payload.pid;
+            existing.count += payload.count ?? 1;
+            this.pendingRemoteSkelLocks.set(key, existing);
+            this.logLock('queuePendingSkelLock:update', {
+                slideId,
+                pointServerId,
+                payload: existing,
+            });
+        } else {
+            const entry = {
+                by: payload.by,
+                instanceId: payload.instanceId,
+                pid: payload.pid,
+                count: 1,
+            };
+            this.pendingRemoteSkelLocks.set(key, entry);
+            this.logLock('queuePendingSkelLock:new', {
+                slideId,
+                pointServerId,
+                payload: entry,
+            });
+        }
+    }
+    private clearPendingSkelLock(slideId: string, pointServerId: string) {
+        this.logLock('clearPendingSkelLock', { slideId, pointServerId });
+        this.pendingRemoteSkelLocks.delete(
+            this.pendingSkelKey(slideId, pointServerId)
+        );
+    }
+    private tryApplyPendingSkelLock(slideId: string, pointServerId: string) {
+        const key = this.pendingSkelKey(slideId, pointServerId);
+        const pending = this.pendingRemoteSkelLocks.get(key);
+        if (!pending) return;
+        const mapping = this.pointServerToLocal
+            .get(slideId)
+            ?.get(pointServerId);
+        if (!mapping) return;
+        this.logLock('tryApplyPendingSkelLock', {
+            slideId,
+            pointServerId,
+            mapping,
+            pending,
+        });
+        this.addRemoteSkelLock(
+            mapping.sk,
+            {
+                by: pending.by,
+                pid: mapping.pid,
+                instanceId: pending.instanceId,
+            },
+            pending.count
+        );
+        this.pendingRemoteSkelLocks.delete(key);
+        this.requestPaint();
+    }
+
+    private pointServerIdForLock(
+        slideId: string,
+        skelId: Id,
+        pointId?: string
+    ): string | undefined {
+        if (pointId) {
+            return serverPointId(
+                this.pointLocalToServer,
+                slideId,
+                skelId,
+                pointId
+            );
+        }
+        const sk = this.skeletons().find((s) => s.id === skelId);
+        if (!sk) return undefined;
+        for (const pid of Object.keys(sk.points)) {
+            const srv = serverPointId(
+                this.pointLocalToServer,
+                slideId,
+                skelId,
+                pid
+            );
+            if (srv) return srv;
+        }
+        return undefined;
     }
 
     private _touchOffs: Array<() => void> = [];
@@ -3499,8 +4565,14 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         string,
         Map<string, { sk: number; pid: string }>
     >();
-    private pendingPoints = new Map<string, Map<string, PendingPointSnapshot>>();
-    private pendingSkeletalUpdates = new Map<string, Map<string, SkeletalDTO>>();
+    private pendingPoints = new Map<
+        string,
+        Map<string, PendingPointSnapshot>
+    >();
+    private pendingSkeletalUpdates = new Map<
+        string,
+        Map<string, SkeletalDTO>
+    >();
 
     /** Call when we first load server annotations for a slide (if/when you fetch them). */
     private seedBoxesFromServer(
@@ -3516,15 +4588,17 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
         for (const srv of serverBoxes ?? []) {
             const localId = this.idSeq++;
+            const labelId = this.ensureBoxLabelIdForName(srv.category);
             l2s.set(localId, srv.id);
             s2l.set(srv.id, localId);
+            this.tryApplyPendingBoxLock(slideId, srv.id);
             ui.push({
                 id: localId,
                 x: srv.x_pos,
                 y: srv.y_pos,
                 w: srv.x_long,
                 h: srv.y_long,
-                labelId: srv.category,
+                labelId,
                 color: srv.color,
             });
         }
@@ -3596,13 +4670,15 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             const points: Record<string, Keypoint> = {};
             const serverToLocal = new Map<string, string>();
             let skColor: string | null = null;
-            let skLabel: string | null = null;
+            let skLabelId: string | null = null;
 
             for (const serverId of component) {
                 const dto = dtoById.get(serverId);
                 if (!dto) continue;
                 const pid = 'p' + this.pointSeq++;
-                const labelId = dto.category || this.activeSkelLabelId();
+                const labelId = this.ensureSkelLabelIdForName(
+                    dto.category ?? skLabelId ?? this.activeSkelLabelId()
+                );
                 points[pid] = {
                     id: pid,
                     x: dto.x_pos ?? 0,
@@ -3611,9 +4687,17 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     labelId,
                 };
                 serverToLocal.set(serverId, pid);
-                linkPointIds(this.pointLocalToServer, this.pointServerToLocal, slideId, localSkId, pid, serverId);
+                linkPointIds(
+                    this.pointLocalToServer,
+                    this.pointServerToLocal,
+                    slideId,
+                    localSkId,
+                    pid,
+                    serverId
+                );
+                this.tryApplyPendingSkelLock(slideId, serverId);
                 if (!skColor && dto.color) skColor = dto.color;
-                if (!skLabel && dto.category) skLabel = dto.category;
+                if (!skLabelId && dto.category) skLabelId = labelId;
             }
 
             const edges: [string, string][] = [];
@@ -3638,7 +4722,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             skeletons.push({
                 id: localSkId,
                 color: skColor ?? this.activeSkelColor(),
-                labelId: skLabel ?? this.activeSkelLabelId(),
+                labelId:
+                    skLabelId ??
+                    this.ensureSkelLabelIdForName(this.activeSkelLabelId()),
                 points,
                 edges,
             });
@@ -3657,14 +4743,24 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     /* BOX mapping utilities */
     private linkBoxIds(slideId: string, localId: number, serverId: string) {
-        getOrCreateNestedMap(this.boxLocalToServer, slideId).set(localId, serverId);
-        getOrCreateNestedMap(this.boxServerToLocal, slideId).set(serverId, localId);
+        getOrCreateNestedMap(this.boxLocalToServer, slideId).set(
+            localId,
+            serverId
+        );
+        getOrCreateNestedMap(this.boxServerToLocal, slideId).set(
+            serverId,
+            localId
+        );
     }
     private boxServerId(slideId: string, localId: number): string | undefined {
-        return getOrCreateNestedMap(this.boxLocalToServer, slideId).get(localId);
+        return getOrCreateNestedMap(this.boxLocalToServer, slideId).get(
+            localId
+        );
     }
     private boxLocalId(slideId: string, serverId: string): number | undefined {
-        return getOrCreateNestedMap(this.boxServerToLocal, slideId).get(serverId);
+        return getOrCreateNestedMap(this.boxServerToLocal, slideId).get(
+            serverId
+        );
     }
 
     private coerceServerBoxToUI(
@@ -3686,21 +4782,18 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             w: srv.x_long,
             h: srv.y_long,
             color: srv.color,
-            labelId: srv.category,
+            labelId: this.ensureBoxLabelIdForName(srv.category),
         };
     }
 
     private queueSkeletalUpdate(slideId: string, srv: SkeletalDTO): void {
         getOrCreateNestedMap(this.pendingSkeletalUpdates, slideId).set(
             srv.id,
-            srv,
+            srv
         );
     }
 
-    private applyServerSkeletalUpdate(
-        slideId: string,
-        srv: SkeletalDTO,
-    ): void {
+    private applyServerSkeletalUpdate(slideId: string, srv: SkeletalDTO): void {
         if (!srv?.id || slideId !== this.currentSlideId()) return;
 
         const loc = localPointOf(this.pointServerToLocal, slideId, srv.id);
@@ -3727,13 +4820,15 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 const old = sk.points[curPid];
                 if (!old) return sk;
 
-                const nx =
-                    typeof srv.x_pos === 'number' ? srv.x_pos : old.x;
-                const ny =
-                    typeof srv.y_pos === 'number' ? srv.y_pos : old.y;
+                const nx = typeof srv.x_pos === 'number' ? srv.x_pos : old.x;
+                const ny = typeof srv.y_pos === 'number' ? srv.y_pos : old.y;
+
+                const pointLabelId = this.ensureSkelLabelIdForName(
+                    srv.category ?? old.labelId
+                );
 
                 const keep = sk.edges.filter(
-                    ([a, b]) => a !== curPid && b !== curPid,
+                    ([a, b]) => a !== curPid && b !== curPid
                 );
                 const add = neighLocals
                     .filter((n) => n.sk === curSkId)
@@ -3742,21 +4837,21 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         ([a, b]) =>
                             !keep.some(
                                 ([x, y]) =>
-                                    (x === a && y === b) ||
-                                    (x === b && y === a),
-                            ),
+                                    (x === a && y === b) || (x === b && y === a)
+                            )
                     );
 
                 return {
                     ...sk,
                     color: srv.color ?? sk.color,
+                    labelId: pointLabelId,
                     points: {
                         ...sk.points,
                         [curPid]: {
                             ...old,
                             x: nx,
                             y: ny,
-                            labelId: srv.category ?? old.labelId,
+                            labelId: pointLabelId,
                             isPending: false,
                         },
                     },
@@ -3808,14 +4903,8 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         });
 
         if (merges.length) {
-            const l2s = getOrCreateNestedMap(
-                this.pointLocalToServer,
-                slideId,
-            );
-            const s2l = getOrCreateNestedMap(
-                this.pointServerToLocal,
-                slideId,
-            );
+            const l2s = getOrCreateNestedMap(this.pointLocalToServer, slideId);
+            const s2l = getOrCreateNestedMap(this.pointServerToLocal, slideId);
             for (const merge of merges) {
                 for (const pid of merge.pids) {
                     const oldKey = pLocKey(merge.from, pid);
@@ -3837,11 +4926,20 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         this.updateScreenLabels();
     }
 
-    private syncServerEdgesForPoint(slideId: string | null, skLocalId: number, pid: string) {
+    private syncServerEdgesForPoint(
+        slideId: string | null,
+        skLocalId: number,
+        pid: string
+    ) {
         if (!slideId || slideId !== this.currentSlideId()) return;
         const sk = this.skeletons().find((s) => s.id === skLocalId);
         if (!sk) return;
-        const srvId = serverPointId(this.pointLocalToServer, slideId, skLocalId, pid);
+        const srvId = serverPointId(
+            this.pointLocalToServer,
+            slideId,
+            skLocalId,
+            pid
+        );
         if (!srvId) return;
 
         const connected = sk.edges.filter(([a, b]) => a === pid || b === pid);
@@ -3855,7 +4953,11 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         }
     }
 
-    private serverNeighborIds(sid: string, sk: SkeletonAnn, pid: string): string[] {
+    private serverNeighborIds(
+        sid: string,
+        sk: SkeletonAnn,
+        pid: string
+    ): string[] {
         const neighbours: string[] = [];
         const seen = new Set<string>();
         for (const [a, b] of sk.edges) {
@@ -3863,7 +4965,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             if (a === pid) other = b;
             else if (b === pid) other = a;
             if (!other) continue;
-            const srv = serverPointId(this.pointLocalToServer, sid, sk.id, other);
+            const srv = serverPointId(
+                this.pointLocalToServer,
+                sid,
+                sk.id,
+                other
+            );
             if (srv && !seen.has(srv)) {
                 seen.add(srv);
                 neighbours.push(srv);
@@ -3902,7 +5009,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             x_long: box.w,
             y_long: box.h,
             color: box.color,
-            category: box.labelId,
+            category: this.boxCategoryValue(box.labelId),
         });
     }
 
@@ -3920,7 +5027,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             );
             if (!srvPointId) continue;
             const point = sk.points[pid];
-            const label = point?.labelId ?? sk.labelId;
+            const label = this.skelCategoryValue(point?.labelId ?? sk.labelId);
             const neighborIds = this.serverNeighborIds(sid, sk, pid);
             this.socket.updateSkeletal(sid, srvPointId, {
                 color: sk.color,
@@ -3949,7 +5056,8 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
         // Build FULL key_points arrays (server ids) for each endpoint
         const toSrv = (pid: string) =>
-            serverPointId(this.pointLocalToServer, sid, sk.id, pid) || undefined;
+            serverPointId(this.pointLocalToServer, sid, sk.id, pid) ||
+            undefined;
 
         const aNeighbors = new Set<string>();
         for (const [x, y] of sk.edges) {
