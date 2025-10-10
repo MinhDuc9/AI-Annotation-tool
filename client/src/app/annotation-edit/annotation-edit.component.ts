@@ -351,10 +351,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             localId = p.boxId;
                         }
                         if (typeof localId === 'number') {
-                            this.setBoxLock(localId, user);
+                            this.setBoxLock(localId, {
+                                by: user,
+                                instanceId: emitter || undefined,
+                            });
                             if (serverId) this.clearPendingBoxLock(sid, serverId);
                         } else if (serverId) {
-                            this.queuePendingBoxLock(sid, serverId, user);
+                            this.queuePendingBoxLock(sid, serverId, {
+                                by: user,
+                                instanceId: emitter || undefined,
+                            });
                         }
                         this.requestPaint();
                     }),
@@ -448,11 +454,15 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             this.setSkelLock(skId, {
                                 by: user,
                                 pid,
+                                instanceId: emitter || undefined,
                             });
                             if (pointServerId)
                                 this.clearPendingSkelLock(sid, pointServerId);
                         } else if (pointServerId) {
-                            this.queuePendingSkelLock(sid, pointServerId, user);
+                            this.queuePendingSkelLock(sid, pointServerId, {
+                                by: user,
+                                instanceId: emitter || undefined,
+                            });
                         }
                         this.requestPaint();
                     }),
@@ -3608,8 +3618,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     }
 
     // === Locks (who is touching what) ===
-    boxLocks = signal<Map<Id, string>>(new Map());
-    skelLocks = signal<Map<Id, { by: string; pid?: string }>>(new Map());
+    boxLocks = signal<Map<Id, { by: string; instanceId?: string }>>(
+        new Map()
+    );
+    skelLocks = signal<
+        Map<Id, { by: string; pid?: string; instanceId?: string }>
+    >(new Map());
     private heldBoxLock: {
         slideId: string;
         boxId: Id;
@@ -3621,8 +3635,14 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         pointId?: string;
         pointServerId?: string | null;
     } | null = null;
-    private pendingRemoteBoxLocks = new Map<string, { by: string }>();
-    private pendingRemoteSkelLocks = new Map<string, { by: string }>();
+    private pendingRemoteBoxLocks = new Map<
+        string,
+        { by: string; instanceId?: string }
+    >();
+    private pendingRemoteSkelLocks = new Map<
+        string,
+        { by: string; instanceId?: string }
+    >();
 
     private logLock(...args: any[]) {
         console.log('[Lock]', ...args);
@@ -3646,39 +3666,80 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     isBoxLockedForMe = (id: Id) => {
         const l = this.boxLocks().get(id);
-        this.logLock('isBoxLockedForMe', { id, lockedBy: l, me: this.me() });
-        return !!l && l !== this.me();
+        const me = this.me();
+        const myInstance = this.socket.clientInstanceId;
+        const locked =
+            !!l &&
+            !(
+                l.by === me &&
+                (!l.instanceId || l.instanceId === myInstance)
+            );
+        this.logLock('isBoxLockedForMe', {
+            id,
+            lockedBy: l?.by,
+            instanceId: l?.instanceId,
+            me,
+            myInstance,
+            locked,
+        });
+        return locked;
     };
 
     isSkelLockedForMe = (id: Id) => {
         const l = this.skelLocks().get(id);
+        const me = this.me();
+        const myInstance = this.socket.clientInstanceId;
+        const locked =
+            !!l &&
+            !(
+                l.by === me &&
+                (!l.instanceId || l.instanceId === myInstance)
+            );
         this.logLock('isSkelLockedForMe', {
             id,
             lockedBy: l?.by,
             pid: l?.pid,
-            me: this.me(),
+            instanceId: l?.instanceId,
+            me,
+            myInstance,
+            locked,
         });
-        return !!l && l.by !== this.me();
+        return locked;
     };
 
     // helpers to mutate the maps immutably (so signals fire)
-    private setBoxLock(id: Id, byUser: string | null) {
+    private setBoxLock(
+        id: Id,
+        payload: { by: string; instanceId?: string } | null
+    ) {
         const next = new Map(this.boxLocks());
-        if (byUser) next.set(id, byUser);
+        if (payload) next.set(id, payload);
         else next.delete(id);
-        this.logLock('setBoxLock', { id, byUser, map: Array.from(next.entries()) });
+        this.logLock('setBoxLock', {
+            id,
+            payload,
+            map: Array.from(next.entries()).map(([k, v]) => [
+                k,
+                { by: v.by, instanceId: v.instanceId },
+            ]),
+        });
         this.boxLocks.set(next);
     }
-    private setSkelLock(id: Id, payload: { by: string; pid?: string } | null) {
+    private setSkelLock(
+        id: Id,
+        payload: { by: string; pid?: string; instanceId?: string } | null
+    ) {
         const next = new Map(this.skelLocks());
         if (payload) next.set(id, payload);
         else next.delete(id);
         this.logLock('setSkelLock', {
             id,
-            payload,
+            payload: payload
+                ? { ...payload }
+                : null,
             map: Array.from(next.entries()).map(([k, v]) => [
                 k,
-                { by: v.by, pid: v.pid },
+                { by: v.by, pid: v.pid, instanceId: v.instanceId },
             ]),
         });
         this.skelLocks.set(next);
@@ -3908,11 +3969,16 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     private pendingBoxKey(slideId: string, serverId: string) {
         return `${slideId}::${serverId}`;
     }
-    private queuePendingBoxLock(slideId: string, serverId: string, by: string) {
-        this.logLock('queuePendingBoxLock', { slideId, serverId, by });
-        this.pendingRemoteBoxLocks.set(this.pendingBoxKey(slideId, serverId), {
-            by,
-        });
+    private queuePendingBoxLock(
+        slideId: string,
+        serverId: string,
+        payload: { by: string; instanceId?: string }
+    ) {
+        this.logLock('queuePendingBoxLock', { slideId, serverId, payload });
+        this.pendingRemoteBoxLocks.set(
+            this.pendingBoxKey(slideId, serverId),
+            payload
+        );
     }
     private clearPendingBoxLock(slideId: string, serverId: string) {
         this.logLock('clearPendingBoxLock', { slideId, serverId });
@@ -3930,7 +3996,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             localId,
             pending,
         });
-        this.setBoxLock(localId, pending.by);
+        this.setBoxLock(localId, pending);
         this.pendingRemoteBoxLocks.delete(key);
         this.requestPaint();
     }
@@ -3941,12 +4007,17 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     private queuePendingSkelLock(
         slideId: string,
         pointServerId: string,
-        by: string
+        payload: { by: string; instanceId?: string }
     ) {
-        this.logLock('queuePendingSkelLock', { slideId, pointServerId, by });
-        this.pendingRemoteSkelLocks.set(this.pendingSkelKey(slideId, pointServerId), {
-            by,
+        this.logLock('queuePendingSkelLock', {
+            slideId,
+            pointServerId,
+            payload,
         });
+        this.pendingRemoteSkelLocks.set(
+            this.pendingSkelKey(slideId, pointServerId),
+            payload
+        );
     }
     private clearPendingSkelLock(slideId: string, pointServerId: string) {
         this.logLock('clearPendingSkelLock', { slideId, pointServerId });
@@ -3964,7 +4035,11 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             mapping,
             pending,
         });
-        this.setSkelLock(mapping.sk, { by: pending.by, pid: mapping.pid });
+        this.setSkelLock(mapping.sk, {
+            by: pending.by,
+            pid: mapping.pid,
+            instanceId: pending.instanceId,
+        });
         this.pendingRemoteSkelLocks.delete(key);
         this.requestPaint();
     }
