@@ -312,6 +312,8 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 this.skelLocks.set(new Map());
                 this.pendingRemoteBoxLocks.clear();
                 this.pendingRemoteSkelLocks.clear();
+                this.pendingRemoteSkelByTemp.clear();
+                this.remoteSkelLockState.clear();
 
                 // dispose previous
                 this.disposeTouchHandlers?.();
@@ -340,6 +342,8 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             return;
                         }
                         const sid = p.slideId;
+                        const instance =
+                            emitter || (user ? `user:${user}` : '');
                         let localId: Id | undefined;
                         let serverId: string | undefined =
                             typeof p.boundingBoxId === 'string'
@@ -431,38 +435,63 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             return;
                         }
                         const sid = p.slideId;
-                        let skId: Id | undefined;
+                        const instance =
+                            emitter || (user ? `user:${user}` : '');
+                        let localSkId: Id | undefined;
                         let pid: string | undefined =
                             typeof p.pointId === 'string' ? p.pointId : undefined;
                         const pointServerId =
                             typeof p.pointServerId === 'string'
                                 ? p.pointServerId
                                 : undefined;
-                        if (typeof p.skeletalId === 'number') {
-                            skId = p.skeletalId;
-                        }
                         if (pointServerId) {
                             const mapping = this.pointServerToLocal
                                 .get(sid)
                                 ?.get(pointServerId);
                             if (mapping) {
-                                skId = mapping.sk as Id;
+                                localSkId = mapping.sk as Id;
                                 pid = mapping.pid;
                             }
+                        } else if (typeof p.skeletalId === 'number') {
+                            localSkId = p.skeletalId;
                         }
-                        if (typeof skId === 'number') {
-                            this.setSkelLock(skId, {
-                                by: user,
-                                pid,
-                                instanceId: emitter || undefined,
-                            });
+                        if (localSkId !== undefined) {
+                            this.addRemoteSkelLock(
+                                localSkId,
+                                {
+                                    by: user,
+                                    pid,
+                                    instanceId: instance || undefined,
+                                },
+                                1
+                            );
                             if (pointServerId)
                                 this.clearPendingSkelLock(sid, pointServerId);
                         } else if (pointServerId) {
                             this.queuePendingSkelLock(sid, pointServerId, {
                                 by: user,
-                                instanceId: emitter || undefined,
+                                instanceId: instance || undefined,
+                                pid,
+                                count: 1,
                             });
+                        } else if (
+                            typeof p.skeletalId === 'number' &&
+                            typeof p.pointId === 'string'
+                        ) {
+                            if (instance) {
+                                const tempKey = this.remoteSkelTempKey(
+                                    sid,
+                                    p.skeletalId,
+                                    p.pointId
+                                );
+                                this.pendingRemoteSkelByTemp.set(tempKey, {
+                                    by: user,
+                                    instanceId: instance,
+                                });
+                                this.logLock('pendingSkelTemp:add', {
+                                    key: tempKey,
+                                });
+                            }
                         }
                         this.requestPaint();
                     }),
@@ -491,26 +520,41 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             return;
                         }
                         const sid = p.slideId;
-                        let skId: Id | undefined;
+                        const instance =
+                            emitter || (user ? `user:${user}` : '');
+                        let localSkId: Id | undefined;
                         const pointServerId =
                             typeof p.pointServerId === 'string'
                                 ? p.pointServerId
                                 : undefined;
-                        if (typeof p.skeletalId === 'number') {
-                            skId = p.skeletalId;
-                        }
                         if (pointServerId) {
                             const mapping = this.pointServerToLocal
                                 .get(sid)
                                 ?.get(pointServerId);
                             if (mapping) {
-                                skId = mapping.sk as Id;
+                                localSkId = mapping.sk as Id;
                             }
+                        } else if (typeof p.skeletalId === 'number') {
+                            localSkId = p.skeletalId;
                         }
-                        if (typeof skId === 'number') {
-                            this.setSkelLock(skId, null);
+                        if (localSkId !== undefined) {
+                            this.removeRemoteSkelLock(localSkId, instance);
                         } else if (pointServerId) {
                             this.clearPendingSkelLock(sid, pointServerId);
+                        } else if (
+                            typeof p.skeletalId === 'number' &&
+                            typeof p.pointId === 'string'
+                        ) {
+                            const tempKey = this.remoteSkelTempKey(
+                                sid,
+                                p.skeletalId,
+                                p.pointId
+                            );
+                            if (this.pendingRemoteSkelByTemp.delete(tempKey)) {
+                                this.logLock('pendingSkelTemp:remove', {
+                                    key: tempKey,
+                                });
+                            }
                         }
                         this.requestPaint();
                     }),
@@ -652,10 +696,53 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             const sid = this.currentSlideId();
                             if (!sid || srv?.slideId !== sid) return;
 
+                            const clientTempRaw = String(
+                                (srv as any).clientTempId ?? ''
+                            ).trim();
+                            let pendingTempEntry:
+                                | { by: string; instanceId: string }
+                                | null = null;
+                            let pendingTempKey: string | null = null;
+                            let pendingTempPid: string | null = null;
+                            if (clientTempRaw) {
+                                const tempParts = clientTempRaw.split(':');
+                                if (tempParts.length === 2) {
+                                    const [remoteSkStr, remotePid] = tempParts;
+                                    if (remoteSkStr && remotePid) {
+                                        pendingTempKey =
+                                            this.remoteSkelTempKey(
+                                                sid,
+                                                remoteSkStr,
+                                                remotePid
+                                            );
+                                        pendingTempEntry =
+                                            this.pendingRemoteSkelByTemp.get(
+                                                pendingTempKey
+                                            ) ?? null;
+                                        pendingTempPid = remotePid;
+                                    }
+                                }
+                            }
+
                             const pendingMatch = takePendingPointMatch(this.pendingPoints, sid, srv);
                             if (pendingMatch) {
                                 linkPointIds(this.pointLocalToServer, this.pointServerToLocal, sid, pendingMatch.skId, pendingMatch.pid, srv.id);
                                 this.tryApplyPendingSkelLock(sid, srv.id);
+                                if (pendingTempEntry && pendingTempKey) {
+                                    this.pendingRemoteSkelByTemp.delete(
+                                        pendingTempKey
+                                    );
+                                    this.addRemoteSkelLock(
+                                        pendingMatch.skId,
+                                        {
+                                            by: pendingTempEntry.by,
+                                            pid: pendingMatch.pid,
+                                            instanceId:
+                                                pendingTempEntry.instanceId,
+                                        },
+                                        1
+                                    );
+                                }
                                 this.skeletons.update((arr) =>
                                     arr.map((sk) => {
                                         if (sk.id !== pendingMatch.skId) return sk;
@@ -718,6 +805,21 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                             srv.id
                                         );
                                         this.tryApplyPendingSkelLock(sid, srv.id);
+                                        if (pendingTempEntry && pendingTempKey) {
+                                            this.pendingRemoteSkelByTemp.delete(
+                                                pendingTempKey
+                                            );
+                                            this.addRemoteSkelLock(
+                                                skLocalId,
+                                                {
+                                                    by: pendingTempEntry.by,
+                                                    pid,
+                                                    instanceId:
+                                                        pendingTempEntry.instanceId,
+                                                },
+                                                1
+                                            );
+                                        }
                                         clearPendingPoint(this.pendingPoints, sid, skLocalId, pid);
                                         const queuedUpdate =
                                             this.pendingSkeletalUpdates
@@ -760,6 +862,24 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             ]);
                             linkPointIds(this.pointLocalToServer, this.pointServerToLocal, sid, localSkId, pid, srv.id);
                             this.tryApplyPendingSkelLock(sid, srv.id);
+                            if (
+                                pendingTempEntry &&
+                                pendingTempKey &&
+                                pendingTempPid
+                            ) {
+                                this.pendingRemoteSkelByTemp.delete(
+                                    pendingTempKey
+                                );
+                                this.addRemoteSkelLock(
+                                    localSkId,
+                                    {
+                                        by: pendingTempEntry.by,
+                                        pid,
+                                        instanceId: pendingTempEntry.instanceId,
+                                    },
+                                    1
+                                );
+                            }
                             const queuedUpdate =
                                 this.pendingSkeletalUpdates
                                     .get(sid)
@@ -3641,8 +3761,26 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     >();
     private pendingRemoteSkelLocks = new Map<
         string,
-        { by: string; instanceId?: string }
+        { by: string; instanceId?: string; pid?: string; count: number }
     >();
+    private pendingRemoteSkelByTemp = new Map<
+        string,
+        { by: string; instanceId: string }
+    >();
+    private remoteSkelLockState = new Map<
+        Id,
+        Map<
+            string,
+            {
+                count: number;
+                by: string;
+                pid?: string;
+                instanceId: string;
+                releaseTimer?: ReturnType<typeof setTimeout> | null;
+            }
+        >
+    >();
+    private readonly remoteSkelReleaseDelayMs = 400;
 
     private logLock(...args: any[]) {
         console.log('[Lock]', ...args);
@@ -3725,24 +3863,131 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         });
         this.boxLocks.set(next);
     }
-    private setSkelLock(
+    private setSkelLockSignal(
         id: Id,
         payload: { by: string; pid?: string; instanceId?: string } | null
     ) {
         const next = new Map(this.skelLocks());
         if (payload) next.set(id, payload);
         else next.delete(id);
-        this.logLock('setSkelLock', {
-            id,
-            payload: payload
-                ? { ...payload }
-                : null,
-            map: Array.from(next.entries()).map(([k, v]) => [
-                k,
-                { by: v.by, pid: v.pid, instanceId: v.instanceId },
-            ]),
-        });
         this.skelLocks.set(next);
+    }
+    private refreshRemoteSkelSignal(id: Id) {
+        const state = this.remoteSkelLockState.get(id);
+        if (!state || state.size === 0) {
+            this.setSkelLockSignal(id, null);
+            return;
+        }
+        let chosen: {
+            count: number;
+            by: string;
+            pid?: string;
+            instanceId: string;
+        } | null = null;
+        for (const entry of state.values()) {
+            if (!chosen) chosen = entry;
+            if (entry.instanceId !== this.socket.clientInstanceId) {
+                chosen = entry;
+                break;
+            }
+        }
+        if (!chosen) {
+            this.setSkelLockSignal(id, null);
+            return;
+        }
+        this.setSkelLockSignal(id, {
+            by: chosen.by,
+            pid: chosen.pid,
+            instanceId: chosen.instanceId,
+        });
+    }
+    private addRemoteSkelLock(
+        id: Id,
+        payload: { by: string; pid?: string; instanceId?: string },
+        count = 1
+    ) {
+        const by = (payload.by ?? '').trim();
+        const instanceId = (payload.instanceId ?? by).trim();
+        if (!by || !instanceId || count <= 0) return;
+        const map =
+            this.remoteSkelLockState.get(id) ??
+            new Map<
+                string,
+                {
+                    count: number;
+                    by: string;
+                    pid?: string;
+                    instanceId: string;
+                    releaseTimer?: ReturnType<typeof setTimeout> | null;
+                }
+            >();
+        let entry = map.get(instanceId);
+        if (!entry) {
+            entry = {
+                count: 0,
+                by,
+                pid: payload.pid,
+                instanceId,
+                releaseTimer: null,
+            };
+        } else if (entry.releaseTimer) {
+            clearTimeout(entry.releaseTimer);
+            entry.releaseTimer = null;
+        }
+        entry.count += count;
+        entry.by = by;
+        if (payload.pid !== undefined) entry.pid = payload.pid;
+        map.set(instanceId, entry);
+        this.remoteSkelLockState.set(id, map);
+        this.logLock('addRemoteSkelLock', { id, entry, count });
+        this.refreshRemoteSkelSignal(id);
+    }
+    private removeRemoteSkelLock(
+        id: Id,
+        instanceIdRaw: string | undefined,
+        count = 1
+    ) {
+        const instanceId = (instanceIdRaw ?? '').trim();
+        if (!instanceId) return;
+        const map = this.remoteSkelLockState.get(id);
+        if (!map) return;
+        const entry = map.get(instanceId);
+        if (!entry) return;
+        if (entry.releaseTimer) {
+            clearTimeout(entry.releaseTimer);
+            entry.releaseTimer = null;
+        }
+        entry.count = Math.max(0, entry.count - count);
+        if (entry.count > 0) {
+            map.set(instanceId, entry);
+            this.remoteSkelLockState.set(id, map);
+            this.logLock('removeRemoteSkelLock:decrement', { id, entry, count });
+            this.refreshRemoteSkelSignal(id);
+            return;
+        }
+        const timer = setTimeout(() => {
+            const currentMap = this.remoteSkelLockState.get(id);
+            if (!currentMap) return;
+            const currentEntry = currentMap.get(instanceId);
+            if (!currentEntry || currentEntry.releaseTimer !== timer) return;
+            currentMap.delete(instanceId);
+            if (currentMap.size === 0) this.remoteSkelLockState.delete(id);
+            else this.remoteSkelLockState.set(id, currentMap);
+            this.logLock('removeRemoteSkelLock:timer-release', {
+                id,
+                instanceId,
+            });
+            this.refreshRemoteSkelSignal(id);
+        }, this.remoteSkelReleaseDelayMs);
+        entry.releaseTimer = timer;
+        map.set(instanceId, entry);
+        this.remoteSkelLockState.set(id, map);
+        this.logLock('removeRemoteSkelLock:schedule', {
+            id,
+            instanceId,
+            delay: this.remoteSkelReleaseDelayMs,
+        });
+        this.refreshRemoteSkelSignal(id);
     }
 
     private syncSelectionLocks(slideId: string | null, sel: Selection) {
@@ -4004,20 +4249,45 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     private pendingSkelKey(slideId: string, pointServerId: string) {
         return `${slideId}::${pointServerId}`;
     }
+    private remoteSkelTempKey(
+        slideId: string,
+        remoteSkId: number | string,
+        pid: string
+    ) {
+        return `${slideId}::${remoteSkId}::${pid}`;
+    }
     private queuePendingSkelLock(
         slideId: string,
         pointServerId: string,
-        payload: { by: string; instanceId?: string }
+        payload: { by: string; instanceId?: string; pid?: string; count?: number }
     ) {
-        this.logLock('queuePendingSkelLock', {
-            slideId,
-            pointServerId,
-            payload,
-        });
-        this.pendingRemoteSkelLocks.set(
-            this.pendingSkelKey(slideId, pointServerId),
-            payload
-        );
+        const key = this.pendingSkelKey(slideId, pointServerId);
+        const existing = this.pendingRemoteSkelLocks.get(key);
+        if (existing) {
+            existing.by = payload.by;
+            if (payload.instanceId) existing.instanceId = payload.instanceId;
+            if (payload.pid !== undefined) existing.pid = payload.pid;
+            existing.count += payload.count ?? 1;
+            this.pendingRemoteSkelLocks.set(key, existing);
+            this.logLock('queuePendingSkelLock:update', {
+                slideId,
+                pointServerId,
+                payload: existing,
+            });
+        } else {
+            const entry = {
+                by: payload.by,
+                instanceId: payload.instanceId,
+                pid: payload.pid,
+                count: payload.count ?? 1,
+            };
+            this.pendingRemoteSkelLocks.set(key, entry);
+            this.logLock('queuePendingSkelLock:new', {
+                slideId,
+                pointServerId,
+                payload: entry,
+            });
+        }
     }
     private clearPendingSkelLock(slideId: string, pointServerId: string) {
         this.logLock('clearPendingSkelLock', { slideId, pointServerId });
@@ -4035,11 +4305,15 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             mapping,
             pending,
         });
-        this.setSkelLock(mapping.sk, {
-            by: pending.by,
-            pid: mapping.pid,
-            instanceId: pending.instanceId,
-        });
+        this.addRemoteSkelLock(
+            mapping.sk,
+            {
+                by: pending.by,
+                pid: mapping.pid,
+                instanceId: pending.instanceId,
+            },
+            pending.count
+        );
         this.pendingRemoteSkelLocks.delete(key);
         this.requestPaint();
     }
