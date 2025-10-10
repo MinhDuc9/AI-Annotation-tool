@@ -49,6 +49,7 @@ import {
     BoundingBoxDTO as AnnotationBoundingBoxDTO,
     SkeletalDTO as AnnotationSkeletalDTO,
 } from '../services/annotation.service';
+import { buildApiUrl } from '../config/api.config';
 import {
     BoxAnn,
     Id,
@@ -3334,7 +3335,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     useServerThumbs = false;
     private serverThumbUrl(slideId: string): string {
         // Example pattern - change if/when your backend has a real endpoint
-        return `http://localhost:8080/slide/thumb/${slideId}`;
+        return buildApiUrl(`/slide/thumb/${slideId}`);
     }
 
     // Get a thumbnail src; triggers lazy generation if needed (when useServerThumbs=false)

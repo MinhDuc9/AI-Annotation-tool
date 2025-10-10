@@ -2,6 +2,7 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { AuthService } from './Auth.service';
 import { UpdateSlideDTO } from './slide.service';
+import { buildApiUrl } from '../config/api.config';
 
 export interface CreateBoundingBoxResponseDTO{
   id: string;
@@ -95,39 +96,39 @@ export class AnnotationService {
   getAllBoundingBox(projectId: string, slideId: string) {
     const token = this.auth.getToken();
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
-    return this.http.get<BoundingBoxDTO[]>('http://localhost:8080/slide/' + projectId + '/' + slideId + '/' + "bounding_box", {headers: header});
+    return this.http.get<BoundingBoxDTO[]>(buildApiUrl(`/slide/${projectId}/${slideId}/bounding_box`), {headers: header});
   }
 
   getAllSkeletal(projectId: string, slideId: string) {
     const token = this.auth.getToken();
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
-    return this.http.get<SkeletalDTO[]>('http://localhost:8080/slide/' + projectId + '/' + slideId + '/' + "skeletal", {headers: header});
+    return this.http.get<SkeletalDTO[]>(buildApiUrl(`/slide/${projectId}/${slideId}/skeletal`), {headers: header});
   }
 
   //Use for AI
   createBoundingBox(projectId: string, slideId: string, body: BoundingBoxBody) {
     const token = this.auth.getToken();
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
-    return this.http.post<BoundingBoxDTO>('http://localhost:8080/slide/' + projectId + '/' + slideId + '/' + "bounding_box", body, {headers: header});
+    return this.http.post<BoundingBoxDTO>(buildApiUrl(`/slide/${projectId}/${slideId}/bounding_box`), body, {headers: header});
   }
 
   //Use for AI
   createSkeletal(projectId: string, slideId: string, body: SkeletalBody) {
     const token = this.auth.getToken();
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
-    return this.http.post<SkeletalDTO>('http://localhost:8080/slide/' + projectId + '/' + slideId + '/' + "skeletal", body, {headers: header});
+    return this.http.post<SkeletalDTO>(buildApiUrl(`/slide/${projectId}/${slideId}/skeletal`), body, {headers: header});
   }
 
   patchBoundingBox(projectId: string, slideId: string, body: BoundingBoxPatchBody) {
     const token = this.auth.getToken();
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
-    return this.http.patch<BoundingBoxDTO>('http://localhost:8080/slide/' + projectId + '/' + slideId + '/' + "bounding_box", body, {headers: header});
+    return this.http.patch<BoundingBoxDTO>(buildApiUrl(`/slide/${projectId}/${slideId}/bounding_box`), body, {headers: header});
   }
 
   //Main use to connect points
   patchSkeletal(projectId: string, slideId: string, body: SkeletalPatchBody) {
     const token = this.auth.getToken();
     const header = new HttpHeaders().set("Authorization", "Bearer " + token);
-    return this.http.patch<SkeletalDTO>('http://localhost:8080/slide/' + projectId + '/' + slideId + '/' + "skeletal", body, {headers: header});
+    return this.http.patch<SkeletalDTO>(buildApiUrl(`/slide/${projectId}/${slideId}/skeletal`), body, {headers: header});
   }
 }

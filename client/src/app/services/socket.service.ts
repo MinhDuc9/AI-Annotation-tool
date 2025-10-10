@@ -2,6 +2,7 @@
 import { Injectable, NgZone } from '@angular/core';
 import { Observable } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
+import { API_BASE_URL } from '../config/api.config';
 
 /** -------- Shared slide presence -------- */
 export interface SlideParticipantPublic {
@@ -112,7 +113,13 @@ export class SocketService {
   private lastJoin: { slideId: string; userId: string } | null = null;
 
   constructor(private zone: NgZone) {
-    this.socket = io((window as any).env?.WS_URL ?? 'http://localhost:8080', {
+    const runtimeWsUrl = (window as any)?.env?.WS_URL;
+    const socketUrl =
+      typeof runtimeWsUrl === 'string' && runtimeWsUrl.trim()
+        ? runtimeWsUrl.trim()
+        : API_BASE_URL;
+
+    this.socket = io(socketUrl, {
       transports: ['websocket'],
       autoConnect: true,
     });

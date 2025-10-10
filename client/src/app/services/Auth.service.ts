@@ -1,6 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { jwtDecode, JwtPayload } from 'jwt-decode';
+import { buildApiUrl } from '../config/api.config';
 
 type MyClaims = JwtPayload & { id?: string; email?: string };
 
@@ -14,7 +15,7 @@ export class AuthService {
 
     login(email: string, password: string) {
         let token = this.http.post<string>(
-            'http://localhost:8080/user/login',
+            buildApiUrl('/user/login'),
             { email: email, password: password },
             { responseType: 'text' as 'json' }
         );
@@ -23,7 +24,7 @@ export class AuthService {
 
     register(userName: string, email: string, password: string) {
         let token = this.http.post<string>(
-            'http://localhost:8080/user/register',
+            buildApiUrl('/user/register'),
             { userName: userName, email: email, password: password },
             { responseType: 'text' as 'json' }
         );
