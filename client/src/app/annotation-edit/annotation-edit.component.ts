@@ -38,7 +38,15 @@ import {
     SocketService,
 } from '../services/socket.service';
 import { AuthService } from '../services/Auth.service';
-import { map, distinctUntilChanged, Observable, firstValueFrom } from 'rxjs';
+import {
+    map,
+    distinctUntilChanged,
+    Observable,
+    firstValueFrom,
+    catchError,
+    switchMap,
+    of,
+} from 'rxjs';
 import { AnnotationTopbarComponent } from '../annotation-topbar/annotation-topbar.component';
 import { ActivatedRoute, Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -85,6 +93,8 @@ import {
     mapSocketToComment,
     PendingCommentTracker,
 } from './annotation-edit.comment-utils';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 interface BoxSnapshot {
     id: number;
@@ -160,6 +170,8 @@ interface AnnotationsSnapshot {
         MatSlideToggleModule,
         AnnotationTopbarComponent,
         ScrollingModule,
+        MatProgressBarModule,
+        MatProgressSpinnerModule,
     ],
     templateUrl: './annotation-edit.component.html',
     styleUrls: ['./annotation-edit.component.scss'],
@@ -6457,5 +6469,117 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         this.socket.updateSkeletal(sid, bSrv, {
             key_points: bSend.length ? bSend : null,
         });
+    }
+
+    isAnnotatingOne = signal(false);
+    isAnnotatingAll = signal(false);
+    /** Auto-annotate only the current slide, then refresh that slide's annotations. */
+    annotateCurrentSlide() {
+        const pid = this.projectId();
+        const sid = this.currentSlideId();
+        if (!pid || !sid) return;
+
+        // Guard: nothing to do -> no API call
+        const ids = [sid].filter(Boolean);
+        if (ids.length === 0) return;
+
+        this.isAnnotatingOne.set(true);
+
+        this.slideSvc
+            .autoAnnotate(pid, ids as [string])
+            .pipe(
+                catchError(() => {
+                    this.snack.open('Auto-annotation failed', undefined, {
+                        duration: 2500,
+                    });
+                    return of(null);
+                })
+            )
+            .subscribe(async (res) => {
+                // Finish/loading off
+                this.isAnnotatingOne.set(false);
+
+                // User feedback
+                this.snack.open('Slide auto-annotation complete', undefined, {
+                    duration: 1800,
+                });
+
+                // If the current slide is the one we just annotated, reload its annotations
+                if (this.currentSlideId() === sid) {
+                    await this.loadAnnotationsForSlide(pid, sid);
+                    this.requestPaint?.();
+                    this.updateScreenLabels?.();
+                }
+            });
+    }
+
+    /** Auto-annotate every slide in the project (non-blocking). */
+    annotateAllSlides() {
+        const pid = this.projectId();
+        const ids = this.slides().map((s) => s.id);
+        if (!pid || ids.length === 0) return; // do not call API if nothing is selected/available
+
+        this.isAnnotatingAll.set(true);
+        this.snack.open(
+            `Auto-annotating ${ids.length} slide(s) in the background...`,
+            'Hide',
+            { duration: 2500 }
+        );
+
+        this.slideSvc
+            .autoAnnotate(pid, ids as unknown as [string]) // backend accepts an array; types expect tuple
+            .pipe(
+                catchError(() => {
+                    this.snack.open('Bulk auto-annotation failed', undefined, {
+                        duration: 2500,
+                    });
+                    return of(null);
+                })
+            )
+            .subscribe(() => {
+                this.isAnnotatingAll.set(false);
+                this.snack.open(
+                    'Auto-annotation started for all slides',
+                    undefined,
+                    { duration: 2000 }
+                );
+                // No forced refresh here; individual slides get refreshed when opened or after single-slide annotate.
+            });
+    }
+
+    /** Handle "New slide" -> create + upload, then refresh list and navigate to it. */
+    onCreateNewSlide(ev: Event) {
+        const pid = this.projectId();
+        if (!pid) return;
+
+        const input = ev.target as HTMLInputElement;
+        const file = input?.files?.[0];
+        input.value = ''; // reset
+
+        if (!file) return;
+
+        const form = new FormData();
+        form.append('file', file);
+
+        this.slideSvc
+            .createSlide(pid)
+            .pipe(
+                switchMap((created) =>
+                    this.slideSvc.updateSlide(pid, created.id, form)
+                ),
+                catchError(() => {
+                    this.snack.open('Failed to create slide', undefined, {
+                        duration: 2500,
+                    });
+                    return of(null);
+                })
+            )
+            .subscribe(async (updated) => {
+                if (!updated) return;
+                this.snack.open('Slide created', undefined, { duration: 1600 });
+                // Refresh list and jump to the new slide
+                await this.loadSlides(pid);
+                this.goToSlide(updated.id);
+            });
     }
 }

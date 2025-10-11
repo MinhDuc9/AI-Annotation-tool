@@ -1,110 +1,10 @@
-<!-- 
-<h2 matDialogTitle>Create Project</h2>
-<main matDialogContent>
-    <form [formGroup]="projectForm" (ngSubmit)="onSubmit()" (keydown.enter)="$event.preventDefault()">
-    <mat-stepper linear #stepper>
-        <mat-step
-            [stepControl]="projectName()!"
-            errorMessage="Name is required."
-        >
-            <ng-template matStepLabel>Project Name</ng-template>
-            <mat-form-field appearance="outline" hideRequiredMarker="true">
-                <input
-                    matInput
-                    formControlName="projectName"
-                    [errorStateMatcher]="matcher"
-                    placeholder="Insert name"
-                    required
-                />
-                @if (projectName()?.hasError('required')) {
-                <mat-error>Project name is required</mat-error>
-                }
-            </mat-form-field>
-            <div>
-                <button matButton type="button" (click)="goStep2(stepper)">Next</button>
-            </div>
-        </mat-step>
-
-        <mat-step
-            formGroupName="authorization"
-            [stepControl]="emails()!"
-            errorMessage="Email format wrong"
-            optional
-        >
-            <ng-template matStepLabel>Authorization</ng-template>
-            <div class="auth-container" style="display: flex; gap: 16px">
-                <div class="emails" style="flex: 1">
-                    <h4>Emails</h4>
-                    @for (emailCtrl of emails().controls; track $index) {
-                    <mat-form-field
-                        appearance="outline"
-                        style="display: block; margin-bottom: 8px"
-                    >
-                        <input
-                            matInput
-                            placeholder="Enter email"
-                            [formControl]="emailCtrl"
-                            [errorStateMatcher]="matcher"
-                        />
-                        @if (emailCtrl.hasError('email')) {
-                        <mat-error>Invalid email format</mat-error>
-                        }
-                    </mat-form-field>
-                    }
-                </div>
-
-                <div class="roles" style="flex: 1">
-                    <h4>Roles</h4>
-                    @for (roleCtrl of roles().controls; track $index) {
-                    <mat-form-field
-                        appearance="outline"
-                        style="display: block; margin-bottom: 8px"
-                    >
-                        <mat-label>Select role</mat-label>
-                        <mat-select [formControl] ="roleCtrl" required="true" >
-                            @for(role of roleChoices; track $index) {
-                            <mat-option [value]="role.value">{{role.roleName}}</mat-option>
-                            }
-                        </mat-select>
-                    </mat-form-field>
-                    }
-                </div>
-            </div>
-            <button matButton="text" type="button" (click)="addEntry()">Add Entry</button>
-            <div>
-                <button matButton matStepperPrevious>Back</button>
-                <button matButton type="button" (click)="goStep3(stepper)">Next</button>
-            </div>
-        </mat-step>
-
-        <mat-step>
-            <ng-template matStepLabel>Upload Images</ng-template>
-                <app-file-input
-                    [allowMultipleFiles]="false"
-                    [allowedTypes]="'.jpeg, .png'"
-                    (onfileRemoved)="removeFile($event)"
-                    (onfileUploaded)="uploadFile($event)"
-                />
-                @if (fileError()) {
-                <mat-error>At least 1 image is required</mat-error>
-                }
-            <div>
-                <button matButton matStepperPrevious>Back</button>
-                <button matButton type="submit">Submit</button>
-            </div>
-        </mat-step>
-    </mat-stepper>
-</form>
-
-</main> -->
-
 <h2 matDialogTitle class="pd__title">
     Create Project
     <span class="pd__title-sub">Set a name, permissions, and upload slides</span>
 </h2>
 
 <main matDialogContent class="pd">
-    <form [formGroup]="projectForm" (ngSubmit)="onSubmit()" (keydown.enter)="$event.preventDefault()">
+    <form [formGroup]="projectForm" (ngSubmit)="onSubmit(false)" (keydown.enter)="$event.preventDefault()">
         <mat-stepper linear class="pd__stepper" [animationDuration]="'180ms'" #stepper>
             <!-- Step 1 -->
             <mat-step [stepControl]="projectName()!" errorMessage="Name is required.">
@@ -191,10 +91,66 @@
                 </section>
 
                 <div class="pd__actions">
-                    <button mat-button matStepperPrevious type="button">Back</button>
-                    <button mat-flat-button color="primary" class="pd__primary" type="submit">Submit</button>
+                    <button mat-button matStepperPrevious type="button" class="left">Back</button>
+
+                    <!-- text Submit: create project now, no auto-annotate -->
+                    <button mat-button type="button" (click)="onSubmit(true)">Submit</button>
+
+                    <!-- primary Next on the far right -->
+                    <button mat-flat-button color="primary" matStepperNext type="button">Next</button>
                 </div>
+
+
             </mat-step>
+
+            <!-- Step 4 -->
+            <mat-step>
+                <ng-template matStepLabel>Auto-annotate (optional)</ng-template>
+
+                <section class="pd__section">
+                    <!-- Loading indicator while request is in-flight -->
+                    @if (autoAnnotating()) {
+                    <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+                    <div style="font-size:12px; opacity:.75; margin-top:6px">
+                        Auto-annotation in progress... you can close this dialog; it will continue in the background.
+                    </div>
+                    }
+                    @else {
+                    <div class="pd__row-actions" style="gap: 8px">
+                        <button mat-stroked-button type="button" (click)="selectAllAuto()">Select all</button>
+                        <button mat-stroked-button type="button" (click)="deselectAllAuto()">Deselect all</button>
+                    </div>
+
+                    <!-- File list with checkboxes -->
+                    <div class="pd__grid-rows" style="margin-top: 8px">
+                        @for (f of files; track $index; let i = $index) {
+                        <label class="pd__rowline" style="align-items:center; gap: 12px">
+                            <mat-checkbox [checked]="autoChoices()[i]" (change)="toggleAutoChoice(i, $event.checked)">
+                                {{ f.name }}
+                            </mat-checkbox>
+                            <!-- OPTIONAL: inline size hint -->
+                            <span style="opacity:.75; font-size: 12px">({{ (f.size/1024)|number:'1.0-0' }} KB)</span>
+                        </label>
+                        }
+                        @empty {
+                        <div class="pd__inline-error">No files yet. Add images in the previous step.</div>
+                        }
+                    </div>
+                    }
+                </section>
+
+                <!-- Step 4 actions -->
+                <div class="pd__actions" [class.is-busy]="autoAnnotating()">
+                    <button mat-button matStepperPrevious type="button" class="left"
+                        [disabled]="autoAnnotating()">Back</button>
+                    <button mat-flat-button color="primary" type="button" (click)="onSubmit(false)"
+                        [disabled]="autoAnnotating()">
+                        Submit
+                    </button>
+                </div>
+
+            </mat-step>
+
         </mat-stepper>
     </form>
 </main>

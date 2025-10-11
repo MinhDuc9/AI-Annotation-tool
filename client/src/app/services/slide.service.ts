@@ -111,4 +111,10 @@ export class SlideService {
     const httpRes = await firstValueFrom(this.getImage(slideId)); // HttpResponse<Blob>
     return httpRes.body as Blob;
   }
+
+  autoAnnotate(projectId: string, slideIds: string[]) {
+    const token = this.auth.getToken();
+    const header = new HttpHeaders().set("Authorization", "Bearer " + token);
+    return this.http.post(buildApiUrl(`/ai-microservice/ai_auto/${projectId}`), {slideIds: slideIds}, {headers: header});
+  }
 }
