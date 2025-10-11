@@ -67,3 +67,9 @@
   .hide-on-small { display:none; }
   .avatar { width:34px; height:34px; }
 }
+
+.topbar {
+  position: sticky; /* or fixed */
+  top: 0;
+  z-index: 1000; /* above mat-sidenav-container content */
+}

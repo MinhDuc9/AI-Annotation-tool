@@ -19,6 +19,11 @@
   --canvas-bg: var(--ed-surface-container);
 }
 
+:host {
+  --topbar-h: 64px; /* 56px on small screens; adjust if needed */
+}
+
+
 .layout {
   position: fixed;
   inset: 0;
@@ -634,3 +639,9 @@ label {
   opacity: 0.85;
   text-align: center;
 }
+
+.layout {
+  height: calc(100vh - var(--topbar-h));
+  margin-top: var(--topbar-h);
+}
+
