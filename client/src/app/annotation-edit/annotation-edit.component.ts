@@ -49,6 +49,7 @@ import {
     BoundingBoxDTO as AnnotationBoundingBoxDTO,
     SkeletalDTO as AnnotationSkeletalDTO,
 } from '../services/annotation.service';
+import { AnnotationHistoryService } from '../services/annotation-history.service';
 import { buildApiUrl } from '../config/api.config';
 import {
     BoxAnn,
@@ -85,6 +86,56 @@ import {
     PendingCommentTracker,
 } from './annotation-edit.comment-utils';
 
+interface BoxSnapshot {
+    id: number;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    labelId: string;
+    color: string;
+}
+
+interface BoxHistoryOperation {
+    type: 'box';
+    slideId: string;
+    localId: number;
+    before: BoxSnapshot | null;
+    after: BoxSnapshot | null;
+    description: string;
+    serverId?: string;
+    clientTempId?: string;
+    pendingDelete?: boolean;
+}
+
+interface PointSnapshot {
+    id: string;
+    x: number;
+    y: number;
+    v: Vis;
+    labelId: string;
+}
+
+interface SkeletonSnapshot {
+    id: number;
+    color: string;
+    labelId: string;
+    points: Record<string, PointSnapshot>;
+    edges: [string, string][];
+}
+
+interface SkeletonHistoryOperation {
+    type: 'skeleton';
+    slideId: string;
+    skeletonId: number;
+    description: string;
+    before: SkeletonSnapshot | null;
+    after: SkeletonSnapshot | null;
+    pendingTempIds: Set<string>;
+    serverIds: Map<string, string>;
+    pendingDelete?: boolean;
+}
+
 @Component({
     selector: 'app-annotation-edit',
     standalone: true,
@@ -113,6 +164,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     private injector = inject(Injector);
     private route = inject(ActivatedRoute);
     private router = inject(Router);
+    private history = inject(AnnotationHistoryService);
 
     // Querystring routing: /annotate/:project_id?slide=SLIDE_ID
     projectId = toSignal(
@@ -149,6 +201,13 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     private boxesBySlide = new Map<string, BoxAnn[]>();
     private skeletonsBySlide = new Map<string, SkeletonAnn[]>();
     private annotationsLoading = new Map<string, Promise<void>>();
+    private historySeq = 0;
+    private historyBoxPendingByTempId = new Map<string, BoxHistoryOperation>();
+    private historyBoxPendingByLocal = new Map<number, BoxHistoryOperation>();
+    private historySkeletonPendingByTempId = new Map<
+        string,
+        SkeletonHistoryOperation
+    >();
 
     // Keep last slide to persist on switch
     private lastSlideId: string | null = null;
@@ -613,36 +672,50 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             if (!srv?.slideId || srv.slideId !== sid) return;
 
                             // If server echoes a clientTempId, use it; else insert fresh
-                            const clientTempId = (srv as any).clientTempId
-                                ? Number((srv as any).clientTempId)
-                                : undefined;
+                            const clientTempRaw = (srv as any).clientTempId;
+                            const clientTempId =
+                                clientTempRaw != null
+                                    ? String(clientTempRaw)
+                                    : null;
+                            const clientLocalId =
+                                clientTempId != null &&
+                                clientTempId.trim() !== '' &&
+                                !Number.isNaN(Number(clientTempId))
+                                    ? Number(clientTempId)
+                                    : undefined;
                             const pendingLocalId = takePendingBoxMatch(
                                 this.pendingBoxes,
                                 sid,
                                 srv
                             );
 
-                            if (clientTempId != null) {
+                            if (clientLocalId != null) {
                                 // Link ids and replace optimistic
-                                this.linkBoxIds(sid, clientTempId, srv.id);
+                                this.linkBoxIds(sid, clientLocalId, srv.id);
                                 this.tryApplyPendingBoxLock(sid, srv.id);
                                 clearPendingBox(
                                     this.pendingBoxes,
                                     sid,
-                                    clientTempId
+                                    clientLocalId
                                 );
                                 this.boxes.update((arr) => {
                                     const i = arr.findIndex(
-                                        (x) => x.id === clientTempId
+                                        (x) => x.id === clientLocalId
                                     );
                                     if (i === -1) return arr;
                                     const next = arr.slice();
                                     next[i] = this.coerceServerBoxToUI(
-                                        clientTempId,
+                                        clientLocalId,
                                         srv
                                     );
                                     return next;
                                 });
+                                this.onBoxCreationAck(
+                                    sid,
+                                    clientLocalId,
+                                    srv.id,
+                                    clientTempId
+                                );
                             } else if (pendingLocalId != null) {
                                 this.linkBoxIds(sid, pendingLocalId, srv.id);
                                 this.tryApplyPendingBoxLock(sid, srv.id);
@@ -663,6 +736,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                     );
                                     return next;
                                 });
+                                this.onBoxCreationAck(
+                                    sid,
+                                    pendingLocalId,
+                                    srv.id,
+                                    null
+                                );
                             } else {
                                 // No temp id: insert new with a new local id
                                 const localId = this.idSeq++;
@@ -672,6 +751,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                     ...arr,
                                     this.coerceServerBoxToUI(localId, srv),
                                 ]);
+                                this.onBoxCreationAck(sid, localId, srv.id, null);
                             }
                             this.requestPaint();
                             this.updateScreenLabels();
@@ -851,6 +931,13 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                         queuedUpdate
                                     );
                                 }
+                                this.onSkeletonCreationAck(
+                                    sid,
+                                    pendingMatch.skId,
+                                    pendingMatch.pid,
+                                    srv.id,
+                                    clientTempRaw.length ? clientTempRaw : null
+                                );
                                 return;
                             }
 
@@ -925,6 +1012,13 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                                 queuedUpdate
                                             );
                                         }
+                                        this.onSkeletonCreationAck(
+                                            sid,
+                                            skLocalId,
+                                            pid,
+                                            srv.id,
+                                            temp || null
+                                        );
                                         return;
                                     }
                                 }
@@ -1635,23 +1729,61 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     onSelectedLabelChange(newId: string) {
         const s = this.selection();
+        const sid = this.currentSlideId();
         if (s.type !== 'box' || s.id == null) return;
+        const before = sid ? this.snapshotBoxById(sid, s.id) : null;
         this.boxes.update((arr) =>
             arr.map((b) => (b.id === s.id ? { ...b, labelId: newId } : b))
         );
         this.requestPaint();
         this.updateScreenLabels();
+        if (sid) {
+            const after = this.snapshotBoxById(sid, s.id);
+            if (
+                before &&
+                after &&
+                !this.boxSnapshotsEqual(before, after)
+            ) {
+                this.recordBoxOperation({
+                    slideId: sid,
+                    localId: s.id,
+                    description: 'Change bounding box label',
+                    before,
+                    after,
+                    serverId: this.boxServerId(sid, s.id),
+                });
+            }
+        }
         this.emitBoxState(s.id);
     }
     onSelectedColorInput(e: Event) {
         const value = (e.target as HTMLInputElement)?.value;
         const s = this.selection();
         if (!value || s.type !== 'box' || s.id == null) return;
+        const sid = this.currentSlideId();
+        const before = sid ? this.snapshotBoxById(sid, s.id) : null;
         this.boxes.update((arr) =>
             arr.map((b) => (b.id === s.id ? { ...b, color: value } : b))
         );
         this.requestPaint();
         this.updateScreenLabels();
+        if (sid) {
+            const after = this.snapshotBoxById(sid, s.id);
+            if (
+                before &&
+                after &&
+                !this.boxSnapshotsEqual(before, after)
+            ) {
+                this.recordBoxOperation({
+                    slideId: sid,
+                    localId: s.id,
+                    description: 'Change bounding box color',
+                    before,
+                    after,
+                    serverId: this.boxServerId(sid, s.id),
+                });
+            }
+        }
         this.emitBoxState(s.id);
     }
 
@@ -1663,20 +1795,61 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         const value = (e.target as HTMLInputElement)?.value;
         const s = this.selection();
         if (!value) return;
+        const sid = this.currentSlideId();
         if (s.type === 'skeleton' && s.id != null) {
+            const beforeSk =
+                sid != null
+                    ? this.skeletons().find((sk) => sk.id === s.id) ?? null
+                    : null;
+            const before =
+                sid && beforeSk ? this.captureSkeletonSnapshot(beforeSk) : null;
             this.skeletons.update((arr) =>
                 arr.map((sk) => (sk.id === s.id ? { ...sk, color: value } : sk))
             );
             this.requestPaint();
             this.emitSkeletonAppearanceFor(s.id);
             this.updateScreenLabels();
+            if (sid && before) {
+                const afterSk =
+                    this.skeletons().find((item) => item.id === s.id) ?? null;
+                if (afterSk) {
+                    const after = this.captureSkeletonSnapshot(afterSk);
+                    this.recordSkeletonOperation({
+                        slideId: sid,
+                        skeletonId: s.id,
+                        description: 'Change skeleton color',
+                        before,
+                        after,
+                    });
+                }
+            }
         } else if (s.type === 'point' && s.id != null) {
+            const beforeSk =
+                sid != null
+                    ? this.skeletons().find((sk) => sk.id === s.id) ?? null
+                    : null;
+            const before =
+                sid && beforeSk ? this.captureSkeletonSnapshot(beforeSk) : null;
             this.skeletons.update((arr) =>
                 arr.map((sk) => (sk.id === s.id ? { ...sk, color: value } : sk))
             );
             this.requestPaint();
             this.emitSkeletonAppearanceFor(s.id);
             this.updateScreenLabels();
+            if (sid && before) {
+                const afterSk =
+                    this.skeletons().find((item) => item.id === s.id) ?? null;
+                if (afterSk) {
+                    const after = this.captureSkeletonSnapshot(afterSk);
+                    this.recordSkeletonOperation({
+                        slideId: sid,
+                        skeletonId: s.id,
+                        description: 'Change skeleton color',
+                        before,
+                        after,
+                    });
+                }
+            }
         }
     }
 
@@ -1698,6 +1871,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         if (sid && skId != null) {
             const sk = this.skeletons().find((s) => s.id === skId);
             if (sk) {
+                const before = this.captureSkeletonSnapshot(sk);
                 this.skeletons.update((arr) =>
                     arr.map((item) =>
                         item.id === skId ? { ...item, color: newColor } : item
@@ -1705,6 +1879,18 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 );
                 this.emitSkeletonAppearanceFor(skId);
                 this.updateScreenLabels();
+                const afterSk =
+                    this.skeletons().find((item) => item.id === skId) ?? null;
+                if (afterSk && !this.skeletonSnapshotsEqual(before, this.captureSkeletonSnapshot(afterSk))) {
+                    const after = this.captureSkeletonSnapshot(afterSk);
+                    this.recordSkeletonOperation({
+                        slideId: sid,
+                        skeletonId: skId,
+                        description: 'Change skeleton color',
+                        before,
+                        after,
+                    });
+                }
             }
         }
     }
@@ -2142,6 +2328,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         const s = this.selection();
         if (s.type !== 'point') return;
         const sid = this.currentSlideId();
+        const skBefore =
+            sid != null
+                ? this.skeletons().find((item) => item.id === s.id) ?? null
+                : null;
+        const before =
+            sid && skBefore ? this.captureSkeletonSnapshot(skBefore) : null;
         this.skeletons.update((arr) =>
             arr.map((sk) => {
                 if (sk.id !== s.id) return sk;
@@ -2170,6 +2362,20 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             color: sk.color,
             key_points: neighborIds.length ? neighborIds : null,
         });
+        if (before) {
+            const afterSk =
+                this.skeletons().find((item) => item.id === s.id) ?? null;
+            if (afterSk) {
+                const after = this.captureSkeletonSnapshot(afterSk);
+                this.recordSkeletonOperation({
+                    slideId: sid,
+                    skeletonId: s.id,
+                    description: 'Change keypoint label',
+                    before,
+                    after,
+                });
+            }
+        }
     }
 
     isSelected(type: 'box' | 'skeleton', id: number | string) {
@@ -2779,6 +2985,14 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                 category: this.boxCategoryValue(box.labelId),
                                 clientTempId: String(tempId), // <- critical for mapping
                             });
+                            this.recordBoxOperation({
+                                slideId: sid,
+                                localId: tempId,
+                                description: 'Create bounding box',
+                                before: null,
+                                after: this.captureBoxSnapshot(box),
+                                clientTempId: String(tempId),
+                            });
                         }
                     }
                 }
@@ -2800,9 +3014,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         let draggingBoxId: Id | null = null;
         let resizingId: Id | null = null;
         let corner: Corner | null = null;
+        let boxBeforeSnapshot: BoxSnapshot | null = null;
 
         let draggingPoint: { skId: Id; pid: string } | null = null;
         let draggingSkeletonId: Id | null = null;
+        let pointBeforeSnapshot: SkeletonSnapshot | null = null;
+        let skeletonBeforeSnapshot: SkeletonSnapshot | null = null;
 
         let lastImg = { x: 0, y: 0 };
 
@@ -2811,6 +3028,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             onDown: (e, ctx) => {
                 const pImg = ctx.screenToImage(e.clientX, e.clientY);
                 const boxes = ctx.boxes;
+                boxBeforeSnapshot = null;
 
                 // Skeleton: test points first (Point Select)
                 const ptHit = this.hitTestPoint(e.clientX, e.clientY);
@@ -2822,6 +3040,14 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         pid: ptHit.pid,
                     });
                     draggingPoint = ptHit;
+                    const sid = this.currentSlideId();
+                    const sk = this.skeletons().find(
+                        (item) => item.id === ptHit.skId
+                    );
+                    pointBeforeSnapshot =
+                        sid && sk
+                            ? this.captureSkeletonSnapshot(sk)
+                            : null;
                     lastImg = pImg;
                     this.lastEditedSkId = ptHit.skId;
                     ctx.requestPaint();
@@ -2835,6 +3061,14 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     this.selection.set({ type: 'skeleton', id: boneHit.skId });
                     this.lastEditedSkId = boneHit.skId;
                     draggingSkeletonId = boneHit.skId;
+                    const sid = this.currentSlideId();
+                    const sk = this.skeletons().find(
+                        (item) => item.id === boneHit.skId
+                    );
+                    skeletonBeforeSnapshot =
+                        sid && sk
+                            ? this.captureSkeletonSnapshot(sk)
+                            : null;
                     lastImg = pImg;
 
                     this.lastEditedSkId = boneHit.skId;
@@ -2859,6 +3093,11 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     resizingId = hitCorner.b.id as Id;
                     corner = hitCorner.c as Corner;
                     lastImg = pImg;
+                    const sid = this.currentSlideId();
+                    boxBeforeSnapshot =
+                        sid != null
+                            ? this.snapshotBoxById(sid, resizingId)
+                            : null;
 
                     ctx.requestPaint();
                     return;
@@ -2874,6 +3113,11 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     this.selection.set({ type: 'box', id: hitBorder.id });
                     draggingBoxId = hitBorder.id as Id;
                     lastImg = pImg;
+                    const sid = this.currentSlideId();
+                    boxBeforeSnapshot =
+                        sid != null
+                            ? this.snapshotBoxById(sid, draggingBoxId)
+                            : null;
 
                     ctx.requestPaint();
                     return;
@@ -2892,6 +3136,11 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
                     draggingBoxId = sel.id;
                     lastImg = pImg;
+                    const sid = this.currentSlideId();
+                    boxBeforeSnapshot =
+                        sid != null
+                            ? this.snapshotBoxById(sid, draggingBoxId)
+                            : null;
 
                     ctx.requestPaint();
                     return;
@@ -2899,6 +3148,8 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
                 // Otherwise clear selection
                 this.selection.set({ type: null, id: null });
+                pointBeforeSnapshot = null;
+                skeletonBeforeSnapshot = null;
                 ctx.requestPaint();
             },
 
@@ -3063,6 +3314,31 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                             category: this.boxCategoryValue(box.labelId),
                         });
                     }
+                    if (box && boxBeforeSnapshot) {
+                        const afterSnapshot = this.captureBoxSnapshot(box);
+                        if (
+                            !this.boxSnapshotsEqual(
+                                boxBeforeSnapshot,
+                                afterSnapshot
+                            )
+                        ) {
+                            const description =
+                                draggingBoxId != null
+                                    ? 'Move bounding box'
+                                    : 'Resize bounding box';
+                            this.recordBoxOperation({
+                                slideId: sid,
+                                localId: lid,
+                                description,
+                                before: boxBeforeSnapshot,
+                                after: afterSnapshot,
+                                serverId: srvId,
+                            });
+                        }
+                    }
+                    if (boxBeforeSnapshot && !box) {
+                        boxBeforeSnapshot = null;
+                    }
                 }
 
                 // POINT/SKELETON UPDATED?
@@ -3134,11 +3410,62 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     }
                 }
 
+                if (sid && draggingPoint && pointBeforeSnapshot) {
+                    const { skId } = draggingPoint;
+                    const sk = this.skeletons().find((s) => s.id === skId);
+                    if (sk) {
+                        const after = this.captureSkeletonSnapshot(sk);
+                        if (
+                            !this.skeletonSnapshotsEqual(
+                                pointBeforeSnapshot,
+                                after
+                            )
+                        ) {
+                            this.recordSkeletonOperation({
+                                slideId: sid,
+                                skeletonId: skId,
+                                description: 'Move keypoint',
+                                before: pointBeforeSnapshot,
+                                after,
+                            });
+                        }
+                    }
+                }
+                if (
+                    sid &&
+                    draggingSkeletonId != null &&
+                    skeletonBeforeSnapshot
+                ) {
+                    const sk = this.skeletons().find(
+                        (s) => s.id === draggingSkeletonId
+                    );
+                    if (sk) {
+                        const after = this.captureSkeletonSnapshot(sk);
+                        if (
+                            !this.skeletonSnapshotsEqual(
+                                skeletonBeforeSnapshot,
+                                after
+                            )
+                        ) {
+                            this.recordSkeletonOperation({
+                                slideId: sid,
+                                skeletonId: draggingSkeletonId,
+                                description: 'Move skeleton',
+                                before: skeletonBeforeSnapshot,
+                                after,
+                            });
+                        }
+                    }
+                }
+                pointBeforeSnapshot = null;
+                skeletonBeforeSnapshot = null;
+
                 draggingPoint = null;
                 draggingSkeletonId = null;
                 draggingBoxId = null;
                 resizingId = null;
                 corner = null;
+                boxBeforeSnapshot = null;
                 ctx.requestPaint();
                 this.updateScreenLabels();
             },
@@ -3208,6 +3535,17 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     sk.color,
                     sk.points[pid].labelId
                 );
+                const after = this.captureSkeletonSnapshot(
+                    this.skeletons().find((item) => item.id === sk.id)!
+                );
+                this.recordSkeletonOperation({
+                    slideId: sid,
+                    skeletonId: sk.id,
+                    description: 'Create skeleton',
+                    before: null,
+                    after,
+                    tempIds: [`${sk.id}:${pid}`],
+                });
             }
             // after you build `sk` and push to `this.skeletons`
             this.lastEditedSkId = sk.id;
@@ -3220,6 +3558,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             p: { x: number; y: number },
             labelHint?: string
         ): { pid: string } => {
+            const sid = this.currentSlideId();
+            const before =
+                sid && sk ? this.captureSkeletonSnapshot(sk) : null;
             const pid = 'p' + this.pointSeq++;
             const baseLabelId =
                 labelHint ?? sk.labelId ?? this.activeSkelLabelId();
@@ -3244,7 +3585,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             );
             this.lastEditedSkId = sk.id;
 
-            const sid = this.currentSlideId();
             const uid = this.me(); // if you need it for touches; not required for create
             if (sid) {
                 this.socket.createSkeletal(sid, {
@@ -3265,6 +3605,19 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     sk.color,
                     pendingPoint.labelId
                 );
+                const afterSk =
+                    this.skeletons().find((item) => item.id === sk.id) ?? null;
+                if (before && afterSk) {
+                    const after = this.captureSkeletonSnapshot(afterSk);
+                    this.recordSkeletonOperation({
+                        slideId: sid,
+                        skeletonId: sk.id,
+                        description: 'Add keypoint',
+                        before,
+                        after,
+                        tempIds: [`${sk.id}:${pid}`],
+                    });
+                }
             }
             return { pid };
         };
@@ -3274,6 +3627,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 ([x, y]) => (x === a && y === b) || (x === b && y === a)
             );
             if (exists) return;
+            const sid = this.currentSlideId();
+            const before =
+                sid && sk ? this.captureSkeletonSnapshot(sk) : null;
 
             // force tuple type for the appended value
             const next: SkeletonAnn = {
@@ -3285,12 +3641,30 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             );
 
             this.emitEdgeSync(next /* or sk if unchanged */, a, b);
+            if (sid && before) {
+                const afterSk =
+                    this.skeletons().find((item) => item.id === sk.id) ?? null;
+                if (afterSk) {
+                    const after = this.captureSkeletonSnapshot(afterSk);
+                    this.recordSkeletonOperation({
+                        slideId: sid,
+                        skeletonId: sk.id,
+                        description: 'Connect keypoints',
+                        before,
+                        after,
+                    });
+                }
+            }
         };
 
         const mergeSkeletons = (keepId: Id, dropId: Id) => {
             const sid = this.currentSlideId();
             let keep = this.skeletons().find((s) => s.id === keepId)!;
             let drop = this.skeletons().find((s) => s.id === dropId)!;
+            const keepBefore =
+                sid && keep ? this.captureSkeletonSnapshot(keep) : null;
+            const dropBefore =
+                sid && drop ? this.captureSkeletonSnapshot(drop) : null;
             // move points
             const movedPts: Record<string, Keypoint> = { ...keep.points };
             const renameMap = new Map<string, string>();
@@ -3359,6 +3733,28 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         }
                     }
                 }
+            }
+            if (sid && keepBefore) {
+                const keepAfter =
+                    this.skeletons().find((s) => s.id === keepId) ?? null;
+                if (keepAfter) {
+                    this.recordSkeletonOperation({
+                        slideId: sid,
+                        skeletonId: keepId,
+                        description: 'Merge skeletons',
+                        before: keepBefore,
+                        after: this.captureSkeletonSnapshot(keepAfter),
+                    });
+                }
+            }
+            if (sid && dropBefore) {
+                this.recordSkeletonOperation({
+                    slideId: sid,
+                    skeletonId: dropId,
+                    description: 'Remove merged skeleton',
+                    before: dropBefore,
+                    after: null,
+                });
             }
         };
 
@@ -3479,23 +3875,35 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         const s = this.selection();
         const sid = this.currentSlideId();
         if (s.type === 'skeleton' && s.id != null) {
+            const sk = this.skeletons().find((item) => item.id === s.id) ?? null;
+            const before =
+                sid && sk ? this.captureSkeletonSnapshot(sk) : null;
             if (sid) {
-                const sk = this.skeletons().find((item) => item.id === s.id);
-                if (sk) {
-                    for (const pid of Object.keys(sk.points)) {
-                        const srvId = serverPointId(
-                            this.pointLocalToServer,
-                            sid,
-                            sk.id,
-                            pid
-                        );
-                        if (srvId) this.socket.deleteSkeletal(sid, srvId);
-                        this.unlinkPointId(sid, sk.id, pid);
-                        clearPendingPoint(this.pendingPoints, sid, sk.id, pid);
+                for (const key of this.historySkeletonPendingByTempId.keys()) {
+                    if (key.startsWith(`${s.id}:`)) {
+                        const pendingOp =
+                            this.historySkeletonPendingByTempId.get(key);
+                        if (pendingOp) pendingOp.pendingDelete = true;
                     }
                 }
+                this.removeSkeletonLocal(s.id, sid, {
+                    send: true,
+                    clearPending: false,
+                });
+            } else {
+                this.skeletons.update((arr) =>
+                    arr.filter((item) => item.id !== s.id)
+                );
             }
-            this.skeletons.update((arr) => arr.filter((sk) => sk.id !== s.id));
+            if (sid && before) {
+                this.recordSkeletonOperation({
+                    slideId: sid,
+                    skeletonId: before.id,
+                    description: 'Delete skeleton',
+                    before,
+                    after: null,
+                });
+            }
             this.selection.set({ type: null, id: null });
             this.lastEditedSkId = null;
             this.requestPaint();
@@ -3503,6 +3911,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             return;
         }
         if (s.type === 'point' && s.id != null) {
+            const sk = this.skeletons().find((item) => item.id === s.id) ?? null;
+            const before =
+                sid && sk ? this.captureSkeletonSnapshot(sk) : null;
             if (sid) {
                 const srvId = serverPointId(
                     this.pointLocalToServer,
@@ -3510,45 +3921,89 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     s.id,
                     s.pid
                 );
-                if (srvId) this.socket.deleteSkeletal(sid, srvId);
+                if (srvId) {
+                    this.socket.deleteSkeletal(sid, srvId);
+                    clearPendingPoint(this.pendingPoints, sid, s.id, s.pid);
+                } else {
+                    const tempKey = `${s.id}:${s.pid}`;
+                    const pendingOp =
+                        this.historySkeletonPendingByTempId.get(tempKey);
+                    if (pendingOp) {
+                        pendingOp.pendingDelete = true;
+                    }
+                }
                 this.unlinkPointId(sid, s.id, s.pid);
-                clearPendingPoint(this.pendingPoints, sid, s.id, s.pid);
             }
             this.skeletons.update((arr) =>
                 arr
-                    .map((sk) => {
-                        if (sk.id !== s.id) return sk;
-                        const nextPts = { ...sk.points };
-                        if (!nextPts[s.pid]) return sk;
+                    .map((skItem) => {
+                        if (skItem.id !== s.id) return skItem;
+                        const nextPts = { ...skItem.points };
+                        if (!nextPts[s.pid]) return skItem;
                         delete nextPts[s.pid];
-                        const nextEdges = sk.edges.filter(
+                        const nextEdges = skItem.edges.filter(
                             ([a, b]) => a !== s.pid && b !== s.pid
                         );
-                        return { ...sk, points: nextPts, edges: nextEdges };
+                        return { ...skItem, points: nextPts, edges: nextEdges };
                     })
-                    .filter((sk) => Object.keys(sk.points).length > 0)
+                    .filter((skItem) => Object.keys(skItem.points).length > 0)
             );
-            this.selection.set({ type: 'skeleton', id: s.id }); // fallback to skeleton if it still exists
-            this.lastEditedSkId = s.id;
+            const updatedSk =
+                this.skeletons().find((item) => item.id === s.id) ?? null;
+            const after =
+                sid && updatedSk
+                    ? this.captureSkeletonSnapshot(updatedSk)
+                    : sid
+                    ? null
+                    : null;
+            if (sid && before) {
+                this.recordSkeletonOperation({
+                    slideId: sid,
+                    skeletonId: before.id,
+                    description: 'Delete keypoint',
+                    before,
+                    after,
+                });
+            }
+            if (updatedSk) {
+                this.selection.set({ type: 'skeleton', id: updatedSk.id });
+                this.lastEditedSkId = updatedSk.id;
+            } else {
+                this.selection.set({ type: null, id: null });
+                if (this.lastEditedSkId === s.id) this.lastEditedSkId = null;
+            }
             this.requestPaint();
+            this.updateScreenLabels();
             return;
         }
         if (s.type === 'box' && s.id != null) {
+            const sid = this.currentSlideId();
+            const before = sid ? this.snapshotBoxById(sid, s.id) : null;
+            let srvId: string | undefined;
             if (sid) {
-                const srvId = this.boxServerId(sid, s.id);
+                srvId = this.boxServerId(sid, s.id);
+                this.removeBoxLocal(s.id, sid, { repaint: false });
                 if (srvId) {
                     this.socket.deleteBoundingBox(sid, srvId);
-                    getOrCreateNestedMap(this.boxServerToLocal, sid).delete(
-                        srvId
-                    );
                 }
-                getOrCreateNestedMap(this.boxLocalToServer, sid).delete(s.id);
-                clearPendingBox(this.pendingBoxes, sid, s.id);
+                this.requestPaint();
+                this.updateScreenLabels();
+                if (before) {
+                    this.recordBoxOperation({
+                        slideId: sid,
+                        localId: s.id,
+                        description: 'Delete bounding box',
+                        before,
+                        after: null,
+                        serverId: srvId,
+                    });
+                }
+            } else {
+                this.boxes.update((list) => list.filter((b) => b.id !== s.id));
+                this.requestPaint();
+                this.updateScreenLabels();
             }
-            this.boxes.update((list) => list.filter((b) => b.id !== s.id));
             this.selection.set({ type: null, id: null });
-            this.requestPaint();
-            this.updateScreenLabels();
         }
     }
 
@@ -4995,6 +5450,728 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         if (srv) s2l?.delete(srv);
         l2s.delete(key);
     }
+
+    /* ---------- History helpers (bounding boxes) ---------- */
+    private nextHistoryId(namespace: string): string {
+        this.historySeq += 1;
+        return `${namespace}-${this.historySeq}`;
+    }
+
+    private captureBoxSnapshot(box: BoxAnn): BoxSnapshot {
+        return {
+            id: box.id,
+            x: box.x,
+            y: box.y,
+            w: box.w,
+            h: box.h,
+            labelId: box.labelId,
+            color: box.color,
+        };
+    }
+
+    private boxSnapshotsEqual(
+        a: BoxSnapshot | null | undefined,
+        b: BoxSnapshot | null | undefined
+    ): boolean {
+        if (!a || !b) return false;
+        return (
+            a.x === b.x &&
+            a.y === b.y &&
+            a.w === b.w &&
+            a.h === b.h &&
+            a.color === b.color &&
+            a.labelId === b.labelId
+        );
+    }
+
+    private snapshotBoxById(slideId: string, localId: number): BoxSnapshot | null {
+        if (!slideId) return null;
+        const box = this.boxes().find((b) => b.id === localId);
+        if (!box) return null;
+        return this.captureBoxSnapshot(box);
+    }
+
+    private recordBoxOperation(params: {
+        slideId: string;
+        localId: number;
+        description: string;
+        before: BoxSnapshot | null;
+        after: BoxSnapshot | null;
+        clientTempId?: string;
+        serverId?: string;
+    }): void {
+        if (!params.slideId || this.history.isExecuting) return;
+        const before = params.before ? { ...params.before } : null;
+        const after = params.after ? { ...params.after } : null;
+        const op: BoxHistoryOperation = {
+            type: 'box',
+            slideId: params.slideId,
+            localId: params.localId,
+            before,
+            after,
+            description: params.description,
+            serverId: params.serverId,
+            clientTempId: params.clientTempId,
+        };
+        if (params.clientTempId) {
+            this.historyBoxPendingByTempId.set(params.clientTempId, op);
+            this.historyBoxPendingByLocal.set(params.localId, op);
+        }
+        const entryId = this.nextHistoryId('box');
+        this.history.push({
+            id: entryId,
+            slideId: params.slideId,
+            description: params.description,
+            undo: () => this.undoBoxOperation(op),
+            redo: () => this.redoBoxOperation(op),
+        });
+    }
+
+    private async undoBoxOperation(op: BoxHistoryOperation): Promise<void> {
+        const sid = op.slideId;
+        if (!sid) return;
+        if (!op.before && op.after) {
+            // undo create -> delete the box
+            const serverId =
+                op.serverId ?? this.boxServerId(sid, op.localId) ?? undefined;
+            this.removeBoxLocal(op.localId, sid, { repaint: true });
+            if (serverId) {
+                this.socket.deleteBoundingBox(sid, serverId);
+                op.serverId = undefined;
+            } else if (op.clientTempId) {
+                op.pendingDelete = true;
+            }
+        } else if (op.before && !op.after) {
+            // undo delete -> recreate box
+            await this.restoreBoxFromSnapshot(op, op.before, sid);
+        } else if (op.before && op.after) {
+            // undo update -> revert to previous state
+            this.applyBoxSnapshot(op.localId, op.before, sid);
+            const serverId =
+                op.serverId ?? this.boxServerId(sid, op.localId) ?? undefined;
+            if (serverId) {
+                this.socket.updateBoundingBox(sid, serverId, {
+                    x_pos: op.before.x,
+                    y_pos: op.before.y,
+                    x_long: op.before.w,
+                    y_long: op.before.h,
+                    color: op.before.color,
+                    category: this.boxCategoryValue(op.before.labelId),
+                });
+            }
+        }
+        this.requestPaint();
+        this.updateScreenLabels();
+    }
+
+    private async redoBoxOperation(op: BoxHistoryOperation): Promise<void> {
+        const sid = op.slideId;
+        if (!sid) return;
+        if (!op.before && op.after) {
+            // redo create -> ensure box exists with "after" values
+            await this.restoreBoxFromSnapshot(op, op.after, sid);
+        } else if (op.before && !op.after) {
+            // redo delete -> remove box again
+            const serverId =
+                op.serverId ?? this.boxServerId(sid, op.localId) ?? undefined;
+            this.removeBoxLocal(op.localId, sid, { repaint: true });
+            if (serverId) {
+                this.socket.deleteBoundingBox(sid, serverId);
+                op.serverId = undefined;
+            } else if (op.clientTempId) {
+                op.pendingDelete = true;
+            }
+        } else if (op.before && op.after) {
+            // redo update -> apply new state
+            this.applyBoxSnapshot(op.localId, op.after, sid);
+            const serverId =
+                op.serverId ?? this.boxServerId(sid, op.localId) ?? undefined;
+            if (serverId) {
+                this.socket.updateBoundingBox(sid, serverId, {
+                    x_pos: op.after.x,
+                    y_pos: op.after.y,
+                    x_long: op.after.w,
+                    y_long: op.after.h,
+                    color: op.after.color,
+                    category: this.boxCategoryValue(op.after.labelId),
+                });
+            }
+        }
+        this.requestPaint();
+        this.updateScreenLabels();
+    }
+
+    private applyBoxSnapshot(localId: number, snapshot: BoxSnapshot, slideId: string) {
+        let applied = false;
+        this.boxes.update((arr) =>
+            arr.map((b) => {
+                if (b.id !== localId) return b;
+                applied = true;
+                return {
+                    ...b,
+                    x: snapshot.x,
+                    y: snapshot.y,
+                    w: snapshot.w,
+                    h: snapshot.h,
+                    color: snapshot.color,
+                    labelId: snapshot.labelId,
+                };
+            })
+        );
+        if (!applied) {
+            const newBox: BoxAnn = {
+                id: localId,
+                x: snapshot.x,
+                y: snapshot.y,
+                w: snapshot.w,
+                h: snapshot.h,
+                color: snapshot.color,
+                labelId: snapshot.labelId,
+            };
+            this.boxes.update((arr) => [...arr, newBox]);
+        }
+        this.ensureIdSeqAtLeast(localId);
+        clearPendingBox(this.pendingBoxes, slideId, localId);
+    }
+
+    private removeBoxLocal(
+        localId: number,
+        slideId: string,
+        opts: { repaint: boolean }
+    ): BoxSnapshot | null {
+        const box = this.boxes().find((b) => b.id === localId);
+        if (!box) return null;
+        const snapshot = this.captureBoxSnapshot(box);
+        this.boxes.update((arr) => arr.filter((b) => b.id !== localId));
+        const sel = this.selection();
+        if (sel.type === 'box' && sel.id === localId) {
+            this.selection.set({ type: null, id: null });
+        }
+        const serverId = this.boxServerId(slideId, localId);
+        if (serverId) {
+            getOrCreateNestedMap(this.boxServerToLocal, slideId).delete(
+                serverId
+            );
+        }
+        getOrCreateNestedMap(this.boxLocalToServer, slideId).delete(localId);
+        clearPendingBox(this.pendingBoxes, slideId, localId);
+        if (opts.repaint) {
+            this.requestPaint();
+            this.updateScreenLabels();
+        }
+        return snapshot;
+    }
+
+    private ensureIdSeqAtLeast(id: number): void {
+        if (this.idSeq <= id) {
+            this.idSeq = id + 1;
+        }
+    }
+
+    private async restoreBoxFromSnapshot(
+        op: BoxHistoryOperation,
+        snapshot: BoxSnapshot,
+        slideId: string
+    ): Promise<void> {
+        let localId = snapshot.id;
+        const exists = this.boxes().some((b) => b.id === localId);
+        if (exists) {
+            localId = this.idSeq++;
+        }
+        this.ensureIdSeqAtLeast(localId);
+        const newBox: BoxAnn = {
+            id: localId,
+            x: snapshot.x,
+            y: snapshot.y,
+            w: snapshot.w,
+            h: snapshot.h,
+            color: snapshot.color,
+            labelId: snapshot.labelId,
+            isPending: true,
+        };
+        this.boxes.update((arr) => [...arr, newBox]);
+        this.selection.set({ type: 'box', id: localId });
+        this.requestPaint();
+        this.updateScreenLabels();
+        const tempId = String(localId);
+        op.localId = localId;
+        op.clientTempId = tempId;
+        op.serverId = undefined;
+        op.pendingDelete = false;
+        this.historyBoxPendingByTempId.set(tempId, op);
+        this.historyBoxPendingByLocal.set(localId, op);
+        markPendingBox(this.pendingBoxes, slideId, localId, newBox);
+        this.socket.createBoundingBox(slideId, {
+            x_pos: snapshot.x,
+            y_pos: snapshot.y,
+            x_long: snapshot.w,
+            y_long: snapshot.h,
+            color: snapshot.color,
+            category: this.boxCategoryValue(snapshot.labelId),
+            clientTempId: tempId,
+        });
+    }
+
+    private onBoxCreationAck(
+        slideId: string,
+        localId: number,
+        serverId: string,
+        clientTempId: string | null
+    ): void {
+        let op: BoxHistoryOperation | undefined;
+        if (clientTempId) {
+            op = this.historyBoxPendingByTempId.get(clientTempId);
+            if (op) {
+                this.historyBoxPendingByTempId.delete(clientTempId);
+            }
+        }
+        if (!op) {
+            op = this.historyBoxPendingByLocal.get(localId);
+        }
+        this.historyBoxPendingByLocal.delete(localId);
+        if (!op) return;
+        op.serverId = serverId;
+        op.clientTempId = undefined;
+        if (op.pendingDelete) {
+            op.pendingDelete = false;
+            this.removeBoxLocal(localId, slideId, { repaint: true });
+            this.socket.deleteBoundingBox(slideId, serverId);
+            op.serverId = undefined;
+        }
+    }
+
+    private captureSkeletonSnapshot(sk: SkeletonAnn): SkeletonSnapshot {
+        const points: Record<string, PointSnapshot> = {};
+        for (const [pid, kp] of Object.entries(sk.points)) {
+            points[pid] = {
+                id: kp.id,
+                x: kp.x,
+                y: kp.y,
+                v: kp.v,
+                labelId: kp.labelId,
+            };
+        }
+        return {
+            id: sk.id,
+            color: sk.color,
+            labelId: sk.labelId,
+            points,
+            edges: sk.edges.map(
+                ([a, b]) => [a, b] as [string, string]
+            ),
+        };
+    }
+
+    private cloneSkeletonSnapshot(
+        snapshot: SkeletonSnapshot | null
+    ): SkeletonSnapshot | null {
+        if (!snapshot) return null;
+        const points: Record<string, PointSnapshot> = {};
+        for (const [pid, kp] of Object.entries(snapshot.points)) {
+            points[pid] = { ...kp };
+        }
+        return {
+            id: snapshot.id,
+            color: snapshot.color,
+            labelId: snapshot.labelId,
+            points,
+            edges: snapshot.edges.map(
+                ([a, b]) => [a, b] as [string, string]
+            ),
+        };
+    }
+
+    private skeletonSnapshotsEqual(
+        a: SkeletonSnapshot | null,
+        b: SkeletonSnapshot | null
+    ): boolean {
+        if (!a && !b) return true;
+        if (!a || !b) return false;
+        if (a.id !== b.id) return false;
+        if (a.color !== b.color) return false;
+        if (a.labelId !== b.labelId) return false;
+        const aPoints = Object.keys(a.points).sort();
+        const bPoints = Object.keys(b.points).sort();
+        if (aPoints.length !== bPoints.length) return false;
+        for (let i = 0; i < aPoints.length; i++) {
+            if (aPoints[i] !== bPoints[i]) return false;
+            const ap = a.points[aPoints[i]];
+            const bp = b.points[bPoints[i]];
+            if (
+                ap.x !== bp.x ||
+                ap.y !== bp.y ||
+                ap.v !== bp.v ||
+                ap.labelId !== bp.labelId
+            ) {
+                return false;
+            }
+        }
+        if (a.edges.length !== b.edges.length) return false;
+        const norm = (edges: [string, string][]) =>
+            edges
+                .map(([x, y]) =>
+                    x <= y ? `${x}|${y}` : `${y}|${x}`
+                )
+                .sort();
+        const aEdges = norm(a.edges);
+        const bEdges = norm(b.edges);
+        for (let i = 0; i < aEdges.length; i++) {
+            if (aEdges[i] !== bEdges[i]) return false;
+        }
+        return true;
+    }
+
+    private ensurePointSeqAtLeast(pid: string): void {
+        const match = pid.match(/\d+$/);
+        if (!match) return;
+        const num = Number(match[0]);
+        if (!Number.isNaN(num) && this.pointSeq <= num) {
+            this.pointSeq = num + 1;
+        }
+    }
+
+    private recordSkeletonOperation(params: {
+        slideId: string;
+        skeletonId: number;
+        description: string;
+        before: SkeletonSnapshot | null;
+        after: SkeletonSnapshot | null;
+        tempIds?: string[];
+    }): void {
+        if (!params.slideId || this.history.isExecuting) return;
+        const before = this.cloneSkeletonSnapshot(params.before);
+        const after = this.cloneSkeletonSnapshot(params.after);
+        if (this.skeletonSnapshotsEqual(before, after)) return;
+
+        const op: SkeletonHistoryOperation = {
+            type: 'skeleton',
+            slideId: params.slideId,
+            skeletonId: params.skeletonId,
+            description: params.description,
+            before,
+            after,
+            pendingTempIds: new Set<string>(),
+            serverIds: new Map<string, string>(),
+        };
+
+        if (params.tempIds) {
+            for (const tempId of params.tempIds) {
+                if (!tempId) continue;
+                op.pendingTempIds.add(tempId);
+                this.historySkeletonPendingByTempId.set(tempId, op);
+            }
+        }
+
+        const entryId = this.nextHistoryId('skel');
+        this.history.push({
+            id: entryId,
+            slideId: params.slideId,
+            description: params.description,
+            undo: () => this.undoSkeletonOperation(op),
+            redo: () => this.redoSkeletonOperation(op),
+        });
+    }
+
+    private async undoSkeletonOperation(
+        op: SkeletonHistoryOperation
+    ): Promise<void> {
+        await this.applySkeletonSnapshot(op, op.before, 'undo');
+    }
+
+    private async redoSkeletonOperation(
+        op: SkeletonHistoryOperation
+    ): Promise<void> {
+        await this.applySkeletonSnapshot(op, op.after, 'redo');
+    }
+
+    private async applySkeletonSnapshot(
+        op: SkeletonHistoryOperation,
+        target: SkeletonSnapshot | null,
+        mode: 'undo' | 'redo'
+    ): Promise<void> {
+        const sid = op.slideId;
+        if (!sid) return;
+
+        const existing = this.skeletons().find(
+            (sk) => sk.id === op.skeletonId
+        );
+
+        if (!target) {
+            if (!existing) return;
+            const removed = this.removeSkeletonLocal(op.skeletonId, sid, {
+                send: true,
+                clearPending: mode === 'redo',
+            });
+            if (removed && removed.points && op.pendingTempIds.size > 0) {
+                op.pendingDelete = true;
+            }
+            this.requestPaint();
+            this.updateScreenLabels();
+            return;
+        }
+
+        this.ensureSkelLabelIdForName(target.labelId);
+        for (const pt of Object.values(target.points)) {
+            this.ensureSkelLabelIdForName(pt.labelId);
+        }
+
+        if (!existing) {
+            this.createSkeletonFromSnapshot(op, target, sid);
+        } else {
+            this.updateSkeletonToSnapshot(op, existing, target, sid);
+        }
+        op.pendingDelete = false;
+        this.requestPaint();
+        this.updateScreenLabels();
+    }
+
+    private removeSkeletonLocal(
+        skLocalId: number,
+        slideId: string,
+        opts: { send: boolean; clearPending: boolean }
+    ): SkeletonSnapshot | null {
+        const current = this.skeletons().find((s) => s.id === skLocalId);
+        if (!current) return null;
+        const snapshot = this.captureSkeletonSnapshot(current);
+
+        // detach selection
+        const sel = this.selection();
+        if (
+            (sel.type === 'skeleton' && sel.id === skLocalId) ||
+            (sel.type === 'point' && sel.id === skLocalId)
+        ) {
+            this.selection.set({ type: null, id: null });
+        }
+        if (this.lastEditedSkId === skLocalId) {
+            this.lastEditedSkId = null;
+        }
+
+        this.skeletons.update((arr) =>
+            arr.filter((sk) => sk.id !== skLocalId)
+        );
+
+        for (const pid of Object.keys(current.points)) {
+            const srvId = serverPointId(
+                this.pointLocalToServer,
+                slideId,
+                skLocalId,
+                pid
+            );
+            if (srvId) {
+                if (opts.send) {
+                    this.socket.deleteSkeletal(slideId, srvId);
+                }
+                this.pointServerToLocal.get(slideId)?.delete(srvId);
+            }
+            getOrCreateNestedMap(
+                this.pointLocalToServer,
+                slideId
+            ).delete(pLocKey(skLocalId, pid));
+            if (opts.clearPending) {
+                clearPendingPoint(this.pendingPoints, slideId, skLocalId, pid);
+            }
+        }
+
+        return snapshot;
+    }
+
+    private createSkeletonFromSnapshot(
+        op: SkeletonHistoryOperation,
+        snapshot: SkeletonSnapshot,
+        slideId: string
+    ): void {
+        const points: Record<string, Keypoint> = {};
+        for (const [pid, point] of Object.entries(snapshot.points)) {
+            points[pid] = {
+                id: pid,
+                x: point.x,
+                y: point.y,
+                v: point.v,
+                labelId: point.labelId,
+                isPending: true,
+            };
+            this.ensurePointSeqAtLeast(pid);
+        }
+
+        const skeleton: SkeletonAnn = {
+            id: snapshot.id,
+            color: snapshot.color,
+            labelId: snapshot.labelId,
+            points,
+            edges: snapshot.edges.map(
+                ([a, b]) => [a, b] as [string, string]
+            ),
+        };
+
+        this.ensureIdSeqAtLeast(snapshot.id);
+        this.skeletons.update((arr) => [...arr, skeleton]);
+        this.lastEditedSkId = snapshot.id;
+
+        for (const [pid, point] of Object.entries(snapshot.points)) {
+            const tempId = `${snapshot.id}:${pid}`;
+            markPendingPoint(
+                this.pendingPoints,
+                slideId,
+                snapshot.id,
+                pid,
+                points[pid],
+                snapshot.color,
+                point.labelId
+            );
+            op.pendingTempIds.add(tempId);
+            this.historySkeletonPendingByTempId.set(tempId, op);
+            this.socket.createSkeletal(slideId, {
+                x_pos: point.x,
+                y_pos: point.y,
+                key_points: null,
+                color: snapshot.color,
+                category: this.skelCategoryValue(point.labelId),
+                clientTempId: tempId,
+            });
+        }
+    }
+
+    private updateSkeletonToSnapshot(
+        op: SkeletonHistoryOperation,
+        current: SkeletonAnn,
+        target: SkeletonSnapshot,
+        slideId: string
+    ): void {
+        const currentPoints = current.points;
+        const targetPoints = target.points;
+        const targetIds = new Set(Object.keys(targetPoints));
+
+        const deletions: string[] = [];
+        for (const pid of Object.keys(currentPoints)) {
+            if (!targetIds.has(pid)) {
+                deletions.push(pid);
+            }
+        }
+
+        for (const pid of deletions) {
+            const srvId = serverPointId(
+                this.pointLocalToServer,
+                slideId,
+                current.id,
+                pid
+            );
+            if (srvId) {
+                this.socket.deleteSkeletal(slideId, srvId);
+                this.pointServerToLocal.get(slideId)?.delete(srvId);
+            }
+            const tempKey = `${current.id}:${pid}`;
+            if (!srvId && op.pendingTempIds.has(tempKey)) {
+                op.pendingDelete = true;
+            }
+            getOrCreateNestedMap(
+                this.pointLocalToServer,
+                slideId
+            ).delete(pLocKey(current.id, pid));
+            if (srvId) {
+                clearPendingPoint(this.pendingPoints, slideId, current.id, pid);
+            }
+        }
+
+        const nextPoints: Record<string, Keypoint> = {};
+        for (const [pid, point] of Object.entries(targetPoints)) {
+            const existing = currentPoints[pid];
+            if (existing) {
+                nextPoints[pid] = {
+                    ...existing,
+                    x: point.x,
+                    y: point.y,
+                    v: point.v,
+                    labelId: point.labelId,
+                };
+                const srvId = serverPointId(
+                    this.pointLocalToServer,
+                    slideId,
+                    current.id,
+                    pid
+                );
+                if (srvId) {
+                    this.socket.updateSkeletal(slideId, srvId, {
+                        x_pos: point.x,
+                        y_pos: point.y,
+                        color: target.color,
+                        category: this.skelCategoryValue(point.labelId),
+                    });
+                }
+            } else {
+                const kp: Keypoint = {
+                    id: pid,
+                    x: point.x,
+                    y: point.y,
+                    v: point.v,
+                    labelId: point.labelId,
+                    isPending: true,
+                };
+                nextPoints[pid] = kp;
+                this.ensurePointSeqAtLeast(pid);
+                markPendingPoint(
+                    this.pendingPoints,
+                    slideId,
+                    current.id,
+                    pid,
+                    kp,
+                    target.color,
+                    point.labelId
+                );
+                const tempId = `${current.id}:${pid}`;
+                op.pendingTempIds.add(tempId);
+                this.historySkeletonPendingByTempId.set(tempId, op);
+                this.socket.createSkeletal(slideId, {
+                    x_pos: point.x,
+                    y_pos: point.y,
+                    key_points: null,
+                    color: target.color,
+                    category: this.skelCategoryValue(point.labelId),
+                    clientTempId: tempId,
+                });
+            }
+        }
+
+        this.skeletons.update((arr) =>
+            arr.map((sk) => {
+                if (sk.id !== current.id) return sk;
+                return {
+                    ...sk,
+                    color: target.color,
+                    labelId: target.labelId,
+                    points: nextPoints,
+                    edges: target.edges.map(
+                        ([a, b]) => [a, b] as [string, string]
+                    ),
+                };
+            })
+        );
+
+        this.emitSkeletonAppearanceFor(current.id);
+        for (const pid of Object.keys(targetPoints)) {
+            this.syncServerEdgesForPoint(slideId, current.id, pid);
+        }
+    }
+
+    private onSkeletonCreationAck(
+        slideId: string,
+        skLocalId: number,
+        pid: string,
+        serverId: string,
+        clientTempId: string | null
+    ): void {
+        const key = (clientTempId?.trim() ?? '') || `${skLocalId}:${pid}`;
+        if (!key) return;
+        const op = this.historySkeletonPendingByTempId.get(key);
+        if (!op) return;
+        op.pendingTempIds.delete(key);
+        op.serverIds.set(pid, serverId);
+        this.historySkeletonPendingByTempId.delete(key);
+        if (op.pendingDelete) {
+            this.socket.deleteSkeletal(slideId, serverId);
+            op.serverIds.delete(pid);
+        }
+    }
+
 
     private emitBoxState(localId: Id) {
         const sid = this.currentSlideId();
