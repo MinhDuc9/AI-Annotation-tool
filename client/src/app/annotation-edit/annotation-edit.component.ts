@@ -136,6 +136,11 @@ interface SkeletonHistoryOperation {
     pendingDelete?: boolean;
 }
 
+interface AnnotationsSnapshot {
+    boxes: BoxSnapshot[];
+    skeletons: SkeletonSnapshot[];
+}
+
 @Component({
     selector: 'app-annotation-edit',
     standalone: true,
@@ -1624,39 +1629,23 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     onClear() {
         const sid = this.currentSlideId();
-        if (sid) {
-            const emittedBoxIds = new Set<string>();
-            for (const box of this.boxes()) {
-                const srvId = this.boxServerId(sid, box.id);
-                if (srvId && !emittedBoxIds.has(srvId)) {
-                    this.socket.deleteBoundingBox(sid, srvId);
-                    emittedBoxIds.add(srvId);
-                }
-            }
+        const snapshot = this.snapshotAnnotations();
 
-            const pointMap = this.pointLocalToServer.get(sid);
-            if (pointMap) {
-                const emittedPoints = new Set<string>();
-                for (const srvId of pointMap.values()) {
-                    if (srvId && !emittedPoints.has(srvId)) {
-                        this.socket.deleteSkeletal(sid, srvId);
-                        emittedPoints.add(srvId);
-                    }
-                }
-            }
+        const hadContent =
+            snapshot.boxes.length > 0 || snapshot.skeletons.length > 0;
 
-            this.clearIdMapsForSlide(sid);
-            this.clearPointMapsForSlide(sid);
-            this.boxesBySlide.set(sid, []);
-            this.skeletonsBySlide.set(sid, []);
-            this.lastEditedSkId = null;
-        }
+        this.performClear(sid);
 
-        this.boxes.set([]);
-        this.skeletons.set([]);
-        this.selection.set({ type: null, id: null });
-        this.requestPaint();
-        this.updateScreenLabels();
+        if (!hadContent) return;
+
+        const entryId = this.nextHistoryId('clear');
+        this.history.push({
+            id: entryId,
+            slideId: sid ?? '',
+            description: 'Clear annotations',
+            undo: () => this.restoreAnnotationsSnapshot(sid, snapshot),
+            redo: () => this.performClear(sid),
+        });
     }
 
     onExport() {
@@ -5870,6 +5859,204 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             undo: () => this.undoSkeletonOperation(op),
             redo: () => this.redoSkeletonOperation(op),
         });
+    }
+
+    private snapshotAnnotations(): AnnotationsSnapshot {
+        return {
+            boxes: this.boxes().map((box) => this.captureBoxSnapshot(box)),
+            skeletons: this.skeletons().map((sk) =>
+                this.captureSkeletonSnapshot(sk)
+            ),
+        };
+    }
+
+    private performClear(slideId: string | null): void {
+        if (slideId) {
+            for (const [, op] of this.historyBoxPendingByTempId) {
+                if (op.slideId === slideId) op.pendingDelete = true;
+            }
+            for (const [, op] of this.historySkeletonPendingByTempId) {
+                if (op.slideId === slideId) op.pendingDelete = true;
+            }
+
+            const emittedBoxIds = new Set<string>();
+            for (const box of this.boxes()) {
+                const srvId = this.boxServerId(slideId, box.id);
+                if (srvId && !emittedBoxIds.has(srvId)) {
+                    this.socket.deleteBoundingBox(slideId, srvId);
+                    emittedBoxIds.add(srvId);
+                }
+            }
+
+            const pointMap = this.pointLocalToServer.get(slideId);
+            if (pointMap) {
+                const emittedPoints = new Set<string>();
+                for (const srvId of pointMap.values()) {
+                    if (srvId && !emittedPoints.has(srvId)) {
+                        this.socket.deleteSkeletal(slideId, srvId);
+                        emittedPoints.add(srvId);
+                    }
+                }
+            }
+
+            this.clearIdMapsForSlide(slideId);
+            this.clearPointMapsForSlide(slideId);
+            this.boxesBySlide.set(slideId, []);
+            this.skeletonsBySlide.set(slideId, []);
+            this.lastEditedSkId = null;
+        }
+
+        this.boxes.set([]);
+        this.skeletons.set([]);
+        this.selection.set({ type: null, id: null });
+        this.requestPaint();
+        this.updateScreenLabels();
+    }
+
+    private async restoreAnnotationsSnapshot(
+        slideId: string | null,
+        snapshot: AnnotationsSnapshot
+    ): Promise<void> {
+        if (slideId) {
+            this.clearIdMapsForSlide(slideId);
+            this.clearPointMapsForSlide(slideId);
+        }
+
+        const restoredBoxes: BoxAnn[] = snapshot.boxes.map((snap) => {
+            this.ensureIdSeqAtLeast(snap.id);
+            return {
+                id: snap.id,
+                x: snap.x,
+                y: snap.y,
+                w: snap.w,
+                h: snap.h,
+                labelId: this.ensureBoxLabelIdForName(snap.labelId),
+                color: snap.color,
+            };
+        });
+
+        const restoredSkeletons: SkeletonAnn[] = snapshot.skeletons.map(
+            (snap) => {
+                this.ensureIdSeqAtLeast(snap.id);
+                const points: Record<string, Keypoint> = {};
+                for (const [pid, kp] of Object.entries(snap.points)) {
+                    this.ensurePointSeqAtLeast(pid);
+                    points[pid] = {
+                        id: pid,
+                        x: kp.x,
+                        y: kp.y,
+                        v: kp.v,
+                        labelId: this.ensureSkelLabelIdForName(kp.labelId),
+                    };
+                }
+                return {
+                    id: snap.id,
+                    color: snap.color,
+                    labelId: this.ensureSkelLabelIdForName(snap.labelId),
+                    points,
+                    edges: snap.edges.map(([a, b]) => [a, b] as [string, string]),
+                };
+            }
+        );
+
+        this.boxes.set(restoredBoxes);
+        this.skeletons.set(restoredSkeletons);
+        if (slideId) {
+            this.boxesBySlide.set(
+                slideId,
+                restoredBoxes.map((b) => ({ ...b }))
+            );
+            this.skeletonsBySlide.set(
+                slideId,
+                restoredSkeletons.map((sk) => ({
+                    ...sk,
+                    points: Object.fromEntries(
+                        Object.entries(sk.points).map(([pid, kp]) => [
+                            pid,
+                            { ...kp },
+                        ])
+                    ),
+                }))
+            );
+        }
+
+        this.selection.set({ type: null, id: null });
+        this.lastEditedSkId = null;
+        this.requestPaint();
+        this.updateScreenLabels();
+
+        if (!slideId) return;
+
+        for (const box of restoredBoxes) {
+            const tempId = String(box.id);
+            const op: BoxHistoryOperation = {
+                type: 'box',
+                slideId,
+                localId: box.id,
+                before: null,
+                after: this.captureBoxSnapshot(box),
+                description: 'Restore bounding box',
+                clientTempId: tempId,
+            };
+            this.historyBoxPendingByTempId.set(tempId, op);
+            this.historyBoxPendingByLocal.set(box.id, op);
+        }
+
+        const skeletonOps = new Map<number, SkeletonHistoryOperation>();
+        for (const sk of restoredSkeletons) {
+            const op: SkeletonHistoryOperation = {
+                type: 'skeleton',
+                slideId,
+                skeletonId: sk.id,
+                description: 'Restore skeleton',
+                before: null,
+                after: this.captureSkeletonSnapshot(sk),
+                pendingTempIds: new Set<string>(),
+                serverIds: new Map<string, string>(),
+            };
+            skeletonOps.set(sk.id, op);
+        }
+
+        for (const box of restoredBoxes) {
+            markPendingBox(this.pendingBoxes, slideId, box.id, box);
+            this.socket.createBoundingBox(slideId, {
+                x_pos: box.x,
+                y_pos: box.y,
+                x_long: box.w,
+                y_long: box.h,
+                color: box.color,
+                category: this.boxCategoryValue(box.labelId),
+                clientTempId: String(box.id),
+            });
+        }
+
+        for (const sk of restoredSkeletons) {
+            for (const [pid, kp] of Object.entries(sk.points)) {
+                const tempId = `${sk.id}:${pid}`;
+                const op = skeletonOps.get(sk.id);
+                if (op) {
+                    op.pendingTempIds.add(tempId);
+                    this.historySkeletonPendingByTempId.set(tempId, op);
+                }
+                markPendingPoint(
+                    this.pendingPoints,
+                    slideId,
+                    sk.id,
+                    pid,
+                    kp,
+                    sk.color,
+                    kp.labelId
+                );
+                this.socket.createSkeletal(slideId, {
+                    x_pos: kp.x,
+                    y_pos: kp.y,
+                    key_points: null,
+                    color: sk.color,
+                    category: this.skelCategoryValue(kp.labelId),
+                    clientTempId: tempId,
+                });
+            }
+        }
     }
 
     private async undoSkeletonOperation(
