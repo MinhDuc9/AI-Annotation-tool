@@ -38,3 +38,35 @@
 
   &__inline-error { margin-top: 6px; }
 }
+
+.pd__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+/* push Left button to the left edge; keeps Next/Submit right-aligned */
+.pd__actions .left {
+  margin-right: auto;
+}
+
+/* nice on mobile: keeps order, allows wrapping if narrow */
+@media (max-width: 600px) {
+  .pd__actions {
+    flex-wrap: wrap;
+  }
+  .pd__actions .left {
+    flex: 1 1 100%;
+    margin-right: 0;
+  }
+  .pd__actions button {
+    /* leave their DOM order: text Submit then primary Next/Submit */
+  }
+}
+
+/* Block interaction and give visual feedback while running */
+.is-busy {
+  pointer-events: none;     
+  opacity: .6;                /* dim UI to indicate disabled state */
+}
