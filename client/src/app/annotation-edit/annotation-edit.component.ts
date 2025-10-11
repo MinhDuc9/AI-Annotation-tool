@@ -335,7 +335,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 // Join new room
                 this.comments.set([]); // reset list for the new slide
                 this.socket.joinSlide(sid, uid);
-                this.isConnected.set(true);
+                this.isConnected.set(this.socket.isConnected());
                 lastCommentsSlideId = sid;
 
                 // Load existing comments and sort newest -> oldest
@@ -360,6 +360,22 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 // Rewire live events (dispose old first)
                 this.disposeSocketHandlers();
                 this.socketSubs = [
+                    this.observe(this.socket.onConnect(), () =>
+                        this.isConnected.set(true)
+                    ),
+                    this.observe(this.socket.onDisconnect(), () =>
+                        this.isConnected.set(false)
+                    ),
+                    this.observe(this.socket.onConnectError(), (err) => {
+                        this.isConnected.set(false);
+                        const message =
+                            err instanceof Error && err.message
+                                ? err.message
+                                : 'Socket connection failed';
+                        this.snack.open(message, undefined, {
+                            duration: 2000,
+                        });
+                    }),
                     this.observe(this.socket.onCommentCreated(), (c) =>
                         this.applyIncomingCreateNewestFirst(c)
                     ),
@@ -1477,6 +1493,21 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     }
 
     private onKeyDown = (e: KeyboardEvent) => {
+        const target = e.target;
+        if (target instanceof HTMLElement) {
+            const tag = target.tagName.toLowerCase();
+            const editableAncestor = target.closest(
+                'input, textarea, [contenteditable]'
+            );
+            if (
+                tag === 'input' ||
+                tag === 'textarea' ||
+                target.isContentEditable ||
+                editableAncestor
+            ) {
+                return;
+            }
+        }
         if (e.code === 'Space') {
             this.spaceHeld = true;
             e.preventDefault();
@@ -4090,6 +4121,13 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     private uuidRegex =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+    private generateTempId(): string {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            return crypto.randomUUID();
+        }
+        return `tmp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
     disconnectFromSlide() {
         this.disposeSocketHandlers();
         this.releaseAllLocks();
@@ -4202,6 +4240,15 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         const content = this.newComment().trim();
         if (!content) return;
 
+        if (!this.isConnected()) {
+            this.snack.open(
+                'Not connected to the comment service',
+                undefined,
+                { duration: 1500 }
+            );
+            return;
+        }
+
         const uid = this.auth.getUserId();
         if (!uid) {
             this.snack.open('Not logged in', undefined, { duration: 1500 });
@@ -4211,7 +4258,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         const pendingKey = `${uid}|${content}`;
 
         const optimistic: CommentModel = {
-            id: crypto.randomUUID(),
+            id: this.generateTempId(),
             slideId,
             userId: uid,
             content,
