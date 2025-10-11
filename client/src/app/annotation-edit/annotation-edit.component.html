@@ -12,6 +12,13 @@
         <div class="sidenav-header">
           <h3>Annotations</h3>
           <div class="spacer"></div>
+          <button mat-icon-button matTooltip="Auto-annotate this slide"
+            [disabled]="!currentSlideId() || isAnnotatingOne()" (click)="annotateCurrentSlide()">
+            <mat-icon>bolt</mat-icon>
+          </button>
+          @if (isAnnotatingOne()) {
+          <mat-progress-spinner diameter="20" mode="indeterminate"></mat-progress-spinner>
+          }
           <input type="file" hidden #fileChooser accept="image/*" (change)="onChooseImage($event)">
           <button mat-icon-button (click)="fileChooser.click()"
             matTooltip="Load Image"><mat-icon>image</mat-icon></button>
@@ -272,76 +279,84 @@
         </div>
       </mat-tab>
 
-  <mat-tab label="Slides">
-    <div class="side-section thumbs">
-      <div class="thumbs-viewport">
-        <cdk-virtual-scroll-viewport
-          class="vport"
-          [itemSize]="138"
-          [minBufferPx]="400"
-          [maxBufferPx]="800">
-          <div class="thumb-row" *cdkVirtualFor="let s of slides(); trackBy: trackSlideId">
-            <button class="thumb" (click)="goToSlide(s.id)" [class.active]="s.id === currentSlideId()" matRipple>
-              @if (thumbSrcFor(s.id); as src) { <img [src]="src" alt="" /> } @else { <div class="thumb-skeleton"></div> }
-              <div class="thumb-caption">Slide {{ s.index + 1 }}</div>
-            </button>
-          </div>
-        </cdk-virtual-scroll-viewport>
-      </div>
-    </div>
-  </mat-tab>
-      <!-- TAB: Comments (UPDATED) -->
-<mat-tab label="Comments">
-  <div class="sidenav-header">
-    <h3>Comments</h3>
-    <div class="spacer"></div>
-    <button mat-icon-button (click)="sidenavOpen = false" matTooltip="Close">
-      <mat-icon>chevron_right</mat-icon>
-    </button>
-  </div>
+      <mat-tab label="Slides">
+        <div class="sidenav-header">
+          <h3>Slides</h3>
+          <div class="spacer"></div>
 
-  <!-- Input at the top (newest-first stream) -->
-  <div class="side-section">
-    <mat-form-field appearance="outline" style="width:100%">
-      <textarea
-        matInput
-        rows="3"
-        placeholder="Write a comment and press Enter..."
-        [value]="newComment()"
-        (input)="onNewCommentInput($event)"
-        (keydown.enter)="addComment(); $event.preventDefault()">
-      </textarea>
-    </mat-form-field>
-    <button mat-raised-button color="primary"
-            (click)="addComment()"
-            [disabled]="!newComment().trim() || !isConnected()">
-      Send
-    </button>
-  </div>
+          <button mat-stroked-button (click)="annotateAllSlides()"
+            [disabled]="isAnnotatingAll() || slides().length === 0">
+            Annotate all
+          </button>
 
-  <h4 class="section">All Comments</h4>
+          <!-- hidden file chooser for "New slide" -->
+          <input #newSlideFile type="file" accept="image/*" hidden (change)="onCreateNewSlide($event)">
+          <button mat-stroked-button (click)="newSlideFile.click()">New slide</button>
+        </div>
 
-  <!-- Newest -> oldest; starts at top naturally -->
-  <div class="comments-list">
-    @if (comments().length === 0) {
-      <div class="empty">No comments yet</div>
-    } @else {
-      @for (c of comments(); track c.id) {
-        <div class="comment-card mat-elevation-z2">
-          <img mat-card-avatar [src]="avatarUrl(c.userId)" alt="{{ commentAuthor(c) }} avatar">
-          <div class="comment-content">
-            <div class="comment-meta">
-              <b>{{ commentAuthor(c) }}</b>
-              <span class="dot">&middot;</span>
-              <span title="{{ c.createdAt | date:'medium' }}">{{ c.createdAt | date:'short' }}</span>
-            </div>
-            <div class="comment-body">{{ c.content }}</div>
+        @if (isAnnotatingAll()) {
+        <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+        }
+        <div class="side-section thumbs">
+          <div class="thumbs-viewport">
+            <cdk-virtual-scroll-viewport class="vport" [itemSize]="138" [minBufferPx]="400" [maxBufferPx]="800">
+              <div class="thumb-row" *cdkVirtualFor="let s of slides(); trackBy: trackSlideId">
+                <button class="thumb" (click)="goToSlide(s.id)" [class.active]="s.id === currentSlideId()" matRipple>
+                  @if (thumbSrcFor(s.id); as src) { <img [src]="src" alt="" /> } @else { <div class="thumb-skeleton">
+                  </div> }
+                  <div class="thumb-caption">Slide {{ s.index + 1 }}</div>
+                </button>
+              </div>
+            </cdk-virtual-scroll-viewport>
           </div>
         </div>
-      }
-    }
-  </div>
-</mat-tab>
+      </mat-tab>
+      <!-- TAB: Comments (UPDATED) -->
+      <mat-tab label="Comments">
+        <div class="sidenav-header">
+          <h3>Comments</h3>
+          <div class="spacer"></div>
+          <button mat-icon-button (click)="sidenavOpen = false" matTooltip="Close">
+            <mat-icon>chevron_right</mat-icon>
+          </button>
+        </div>
+
+        <!-- Input at the top (newest-first stream) -->
+        <div class="side-section">
+          <mat-form-field appearance="outline" style="width:100%">
+            <textarea matInput rows="3" placeholder="Write a comment and press Enter..." [value]="newComment()"
+              (input)="onNewCommentInput($event)" (keydown.enter)="addComment(); $event.preventDefault()">
+      </textarea>
+          </mat-form-field>
+          <button mat-raised-button color="primary" (click)="addComment()"
+            [disabled]="!newComment().trim() || !isConnected()">
+            Send
+          </button>
+        </div>
+
+        <h4 class="section">All Comments</h4>
+
+        <!-- Newest -> oldest; starts at top naturally -->
+        <div class="comments-list">
+          @if (comments().length === 0) {
+          <div class="empty">No comments yet</div>
+          } @else {
+          @for (c of comments(); track c.id) {
+          <div class="comment-card mat-elevation-z2">
+            <img mat-card-avatar [src]="avatarUrl(c.userId)" alt="{{ commentAuthor(c) }} avatar">
+            <div class="comment-content">
+              <div class="comment-meta">
+                <b>{{ commentAuthor(c) }}</b>
+                <span class="dot">&middot;</span>
+                <span title="{{ c.createdAt | date:'medium' }}">{{ c.createdAt | date:'short' }}</span>
+              </div>
+              <div class="comment-body">{{ c.content }}</div>
+            </div>
+          </div>
+          }
+          }
+        </div>
+      </mat-tab>
 
     </mat-tab-group>
 
