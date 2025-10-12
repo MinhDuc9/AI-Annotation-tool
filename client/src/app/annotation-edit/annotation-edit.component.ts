@@ -6612,7 +6612,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         if (!file) return;
 
         const form = new FormData();
-        form.append('file', file);
+        form.append('image', file);
 
         this.slideSvc
             .createSlide(pid)
