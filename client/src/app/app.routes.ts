@@ -1,5 +1,11 @@
-import { Routes } from '@angular/router';
+import { CanActivateFn, Router, Routes } from '@angular/router';
 import { HomeComponent } from './home/home.component';
+import { inject } from '@angular/core';
+
+export const authGuard: CanActivateFn = () => {
+  const token = sessionStorage.getItem('token');
+  return token ? true : inject(Router).parseUrl('/login');
+};
 
 export const routes: Routes = [
     {
@@ -17,7 +23,8 @@ export const routes: Routes = [
     },
     {
         path: 'annotate/:project_id',
-        loadComponent: () => import('./annotation-edit/annotation-edit.component').then(m => m.AnnotationEditComponent)
+        loadComponent: () => import('./annotation-edit/annotation-edit.component').then(m => m.AnnotationEditComponent),
+        canActivate: [authGuard]
     },
     {
         path: 'guide',
