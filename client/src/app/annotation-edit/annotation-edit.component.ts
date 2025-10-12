@@ -199,6 +199,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         { initialValue: null }
     );
 
+    myRole = signal<'admin' | 'write' | 'read' | null>(null);
+    canAnnotate = computed(() => {
+        const r = this.myRole();
+        return r === 'admin' || r === 'write';
+    });
+
     // Slides list for the rail
     slides = signal<SlideMeta[]>([]);
     slidesLoading = signal(false);
@@ -316,6 +322,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 const pid = this.projectId();
                 if (!pid) return;
                 this.loadProjectUsers(pid);
+                this.loadProjectName(pid);
             });
 
             // Join/leave comment room automatically when slide changes
@@ -768,7 +775,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                                     ...arr,
                                     this.coerceServerBoxToUI(localId, srv),
                                 ]);
-                                this.onBoxCreationAck(sid, localId, srv.id, null);
+                                this.onBoxCreationAck(
+                                    sid,
+                                    localId,
+                                    srv.id,
+                                    null
+                                );
                             }
                             this.requestPaint();
                             this.updateScreenLabels();
@@ -1360,12 +1372,14 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         });
     }
 
-    onTopbarUndo() {
-        // forward to your annotation history or use service:
-        // this.annotationHistoryService.undo();
+    // Hook your existing undo/redo functions (or add these if missing)
+    onUndo() {
+        // call into your history manager
+        this.history.undo();
     }
-    onTopbarRedo() {
-        // this.annotationHistoryService.redo();
+
+    onRedo() {
+        this.history.redo();
     }
 
     /* ---------- View refs ---------- */
@@ -1566,6 +1580,12 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     currentTool = signal<Tool>(this.selectToolObj);
     selectTool(kind: ToolKind) {
+        if (
+            !this.canAnnotate() &&
+            (kind === 'select' || kind === 'box' || kind === 'skeleton')
+        ) {
+            return;
+        }
         this.currentTool.set(
             kind === 'box'
                 ? this.boxTool
@@ -1631,13 +1651,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     }
 
     /* ---------- UI actions ---------- */
-    onChooseImage(ev: Event) {
-        const input = ev.target as HTMLInputElement;
-        const file = input.files?.[0];
-        if (!file) return;
-        const url = URL.createObjectURL(file);
-        this.img.src = url;
-    }
 
     onClear() {
         const sid = this.currentSlideId();
@@ -1657,33 +1670,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             description: 'Clear annotations',
             undo: () => this.restoreAnnotationsSnapshot(sid, snapshot),
             redo: () => this.performClear(sid),
-        });
-    }
-
-    onExport() {
-        const payload = {
-            image: {
-                width: this.imageWidth(),
-                height: this.imageHeight(),
-                file: this.img.src,
-            },
-            boxLabels: this.boxLabels(), // <- boxes' label set
-            skelLabels: this.skelLabels(), // <- keypoints' label set
-            boxes: this.boxes(),
-            skeletons: this.skeletons(),
-        };
-
-        const blob = new Blob([JSON.stringify(payload, null, 2)], {
-            type: 'application/json',
-        });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.download = 'annotations.json';
-        a.href = url;
-        a.click();
-        URL.revokeObjectURL(url);
-        this.snack.open('Exported annotations.json', undefined, {
-            duration: 1600,
         });
     }
 
@@ -1740,11 +1726,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         this.updateScreenLabels();
         if (sid) {
             const after = this.snapshotBoxById(sid, s.id);
-            if (
-                before &&
-                after &&
-                !this.boxSnapshotsEqual(before, after)
-            ) {
+            if (before && after && !this.boxSnapshotsEqual(before, after)) {
                 this.recordBoxOperation({
                     slideId: sid,
                     localId: s.id,
@@ -1770,11 +1752,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         this.updateScreenLabels();
         if (sid) {
             const after = this.snapshotBoxById(sid, s.id);
-            if (
-                before &&
-                after &&
-                !this.boxSnapshotsEqual(before, after)
-            ) {
+            if (before && after && !this.boxSnapshotsEqual(before, after)) {
                 this.recordBoxOperation({
                     slideId: sid,
                     localId: s.id,
@@ -1882,7 +1860,13 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 this.updateScreenLabels();
                 const afterSk =
                     this.skeletons().find((item) => item.id === skId) ?? null;
-                if (afterSk && !this.skeletonSnapshotsEqual(before, this.captureSkeletonSnapshot(afterSk))) {
+                if (
+                    afterSk &&
+                    !this.skeletonSnapshotsEqual(
+                        before,
+                        this.captureSkeletonSnapshot(afterSk)
+                    )
+                ) {
                     const after = this.captureSkeletonSnapshot(afterSk);
                     this.recordSkeletonOperation({
                         slideId: sid,
@@ -2928,6 +2912,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         return {
             kind: 'box',
             onDown: (e, ctx) => {
+                if (!this.canAnnotate()) return;
                 if (!this.imgLoaded()) return;
                 creating = true;
                 startImg = ctx.clampToImage(
@@ -2951,6 +2936,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 this.updateScreenLabels();
             },
             onMove: (e, ctx) => {
+                if (!this.canAnnotate()) return;
                 if (!creating || tempId == null) return;
                 const cur = ctx.clampToImage(
                     ctx.screenToImage(e.clientX, e.clientY)
@@ -2968,6 +2954,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 this.updateScreenLabels();
             },
             onUp: (_e, ctx) => {
+                if (!this.canAnnotate()) return;
                 creating = false;
                 if (tempId != null) {
                     const sid = this.currentSlideId();
@@ -3027,6 +3014,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         return {
             kind: 'select',
             onDown: (e, ctx) => {
+                if (!this.canAnnotate()) return;
                 const pImg = ctx.screenToImage(e.clientX, e.clientY);
                 const boxes = ctx.boxes;
                 boxBeforeSnapshot = null;
@@ -3046,9 +3034,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         (item) => item.id === ptHit.skId
                     );
                     pointBeforeSnapshot =
-                        sid && sk
-                            ? this.captureSkeletonSnapshot(sk)
-                            : null;
+                        sid && sk ? this.captureSkeletonSnapshot(sk) : null;
                     lastImg = pImg;
                     this.lastEditedSkId = ptHit.skId;
                     ctx.requestPaint();
@@ -3067,9 +3053,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                         (item) => item.id === boneHit.skId
                     );
                     skeletonBeforeSnapshot =
-                        sid && sk
-                            ? this.captureSkeletonSnapshot(sk)
-                            : null;
+                        sid && sk ? this.captureSkeletonSnapshot(sk) : null;
                     lastImg = pImg;
 
                     this.lastEditedSkId = boneHit.skId;
@@ -3155,6 +3139,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             },
 
             onMove: (e, ctx) => {
+                if (!this.canAnnotate()) return;
                 const cur = ctx.screenToImage(e.clientX, e.clientY);
 
                 // Move point
@@ -3299,6 +3284,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             },
 
             onUp: (_e, ctx) => {
+                if (!this.canAnnotate()) return;
                 // BOX UPDATED?
                 const sid = this.currentSlideId();
                 if (sid && (draggingBoxId != null || resizingId != null)) {
@@ -3560,8 +3546,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             labelHint?: string
         ): { pid: string } => {
             const sid = this.currentSlideId();
-            const before =
-                sid && sk ? this.captureSkeletonSnapshot(sk) : null;
+            const before = sid && sk ? this.captureSkeletonSnapshot(sk) : null;
             const pid = 'p' + this.pointSeq++;
             const baseLabelId =
                 labelHint ?? sk.labelId ?? this.activeSkelLabelId();
@@ -3629,8 +3614,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             );
             if (exists) return;
             const sid = this.currentSlideId();
-            const before =
-                sid && sk ? this.captureSkeletonSnapshot(sk) : null;
+            const before = sid && sk ? this.captureSkeletonSnapshot(sk) : null;
 
             // force tuple type for the appended value
             const next: SkeletonAnn = {
@@ -3838,6 +3822,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         return {
             kind: 'skeleton',
             onDown: (e, ctx) => {
+                if (!this.canAnnotate()) return;
                 if (!this.imgLoaded()) return;
                 const ctrl = e.ctrlKey || e.metaKey; // allow Cmd on macs
                 const hit = this.hitTestPoint(e.clientX, e.clientY);
@@ -3873,12 +3858,13 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
 
     /* ---------- Delete behavior ---------- */
     private deleteCurrentSelection() {
+        if (!this.canAnnotate()) return;
         const s = this.selection();
         const sid = this.currentSlideId();
         if (s.type === 'skeleton' && s.id != null) {
-            const sk = this.skeletons().find((item) => item.id === s.id) ?? null;
-            const before =
-                sid && sk ? this.captureSkeletonSnapshot(sk) : null;
+            const sk =
+                this.skeletons().find((item) => item.id === s.id) ?? null;
+            const before = sid && sk ? this.captureSkeletonSnapshot(sk) : null;
             if (sid) {
                 for (const key of this.historySkeletonPendingByTempId.keys()) {
                     if (key.startsWith(`${s.id}:`)) {
@@ -3912,9 +3898,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             return;
         }
         if (s.type === 'point' && s.id != null) {
-            const sk = this.skeletons().find((item) => item.id === s.id) ?? null;
-            const before =
-                sid && sk ? this.captureSkeletonSnapshot(sk) : null;
+            const sk =
+                this.skeletons().find((item) => item.id === s.id) ?? null;
+            const before = sid && sk ? this.captureSkeletonSnapshot(sk) : null;
             if (sid) {
                 const srvId = serverPointId(
                     this.pointLocalToServer,
@@ -4017,6 +4003,8 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
     // Map of userId -> userName for displaying comment authors
     private projectSvc = inject(ProjectService);
     usersById = signal<Record<string, string>>({});
+    projectName = signal<string>('');
+    currentUserName = signal<string>('');
 
     private loadProjectUsers(pid: string) {
         this.projectSvc.getProjectUsers(pid).subscribe({
@@ -4024,11 +4012,37 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 const map: Record<string, string> = {};
                 for (const u of users ?? []) map[u.userId] = u.userName ?? '';
                 this.usersById.set(map);
+                this.currentUserName.set(
+                    map[this.auth.getUserId() ?? ''] ?? ''
+                );
+
+                const meId = (this.auth.getUserId() ?? '').trim();
+                const me = (users ?? []).find(
+                    (u) => (u.userId ?? '').trim() === meId
+                );
+                this.myRole.set(me?.role ?? 'read');
+                if (!this.canAnnotate()) {
+                    this.currentTool.set(this.stagePanTool); // keep read users in a non-edit tool
+                }
             },
             error: () => {
                 // If it fails, keep empty map; we'll fallback to "Removed User"
                 this.usersById.set({});
+                this.myRole.set('read');
             },
+        });
+    }
+
+    private loadProjectName(pid: string) {
+        // Lightweight: fetch all and pick mine; if you already cache it elsewhere, reuse that instead.
+        this.projectSvc.getProjects().subscribe({
+            next: (list) => {
+                const p = (list || []).find(
+                    (x) => x.id === pid || x.projectId === pid
+                );
+                this.projectName.set(p?.projectName || 'Project');
+            },
+            error: () => this.projectName.set('Project'),
         });
     }
 
@@ -5485,7 +5499,10 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         );
     }
 
-    private snapshotBoxById(slideId: string, localId: number): BoxSnapshot | null {
+    private snapshotBoxById(
+        slideId: string,
+        localId: number
+    ): BoxSnapshot | null {
         if (!slideId) return null;
         const box = this.boxes().find((b) => b.id === localId);
         if (!box) return null;
@@ -5602,7 +5619,11 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         this.updateScreenLabels();
     }
 
-    private applyBoxSnapshot(localId: number, snapshot: BoxSnapshot, slideId: string) {
+    private applyBoxSnapshot(
+        localId: number,
+        snapshot: BoxSnapshot,
+        slideId: string
+    ) {
         let applied = false;
         this.boxes.update((arr) =>
             arr.map((b) => {
@@ -5757,9 +5778,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             color: sk.color,
             labelId: sk.labelId,
             points,
-            edges: sk.edges.map(
-                ([a, b]) => [a, b] as [string, string]
-            ),
+            edges: sk.edges.map(([a, b]) => [a, b] as [string, string]),
         };
     }
 
@@ -5776,9 +5795,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             color: snapshot.color,
             labelId: snapshot.labelId,
             points,
-            edges: snapshot.edges.map(
-                ([a, b]) => [a, b] as [string, string]
-            ),
+            edges: snapshot.edges.map(([a, b]) => [a, b] as [string, string]),
         };
     }
 
@@ -5809,11 +5826,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         }
         if (a.edges.length !== b.edges.length) return false;
         const norm = (edges: [string, string][]) =>
-            edges
-                .map(([x, y]) =>
-                    x <= y ? `${x}|${y}` : `${y}|${x}`
-                )
-                .sort();
+            edges.map(([x, y]) => (x <= y ? `${x}|${y}` : `${y}|${x}`)).sort();
         const aEdges = norm(a.edges);
         const bEdges = norm(b.edges);
         for (let i = 0; i < aEdges.length; i++) {
@@ -5966,7 +5979,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                     color: snap.color,
                     labelId: this.ensureSkelLabelIdForName(snap.labelId),
                     points,
-                    edges: snap.edges.map(([a, b]) => [a, b] as [string, string]),
+                    edges: snap.edges.map(
+                        ([a, b]) => [a, b] as [string, string]
+                    ),
                 };
             }
         );
@@ -6091,9 +6106,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
         const sid = op.slideId;
         if (!sid) return;
 
-        const existing = this.skeletons().find(
-            (sk) => sk.id === op.skeletonId
-        );
+        const existing = this.skeletons().find((sk) => sk.id === op.skeletonId);
 
         if (!target) {
             if (!existing) return;
@@ -6145,9 +6158,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             this.lastEditedSkId = null;
         }
 
-        this.skeletons.update((arr) =>
-            arr.filter((sk) => sk.id !== skLocalId)
-        );
+        this.skeletons.update((arr) => arr.filter((sk) => sk.id !== skLocalId));
 
         for (const pid of Object.keys(current.points)) {
             const srvId = serverPointId(
@@ -6162,10 +6173,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 }
                 this.pointServerToLocal.get(slideId)?.delete(srvId);
             }
-            getOrCreateNestedMap(
-                this.pointLocalToServer,
-                slideId
-            ).delete(pLocKey(skLocalId, pid));
+            getOrCreateNestedMap(this.pointLocalToServer, slideId).delete(
+                pLocKey(skLocalId, pid)
+            );
             if (opts.clearPending) {
                 clearPendingPoint(this.pendingPoints, slideId, skLocalId, pid);
             }
@@ -6197,9 +6207,7 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             color: snapshot.color,
             labelId: snapshot.labelId,
             points,
-            edges: snapshot.edges.map(
-                ([a, b]) => [a, b] as [string, string]
-            ),
+            edges: snapshot.edges.map(([a, b]) => [a, b] as [string, string]),
         };
 
         this.ensureIdSeqAtLeast(snapshot.id);
@@ -6262,10 +6270,9 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             if (!srvId && op.pendingTempIds.has(tempKey)) {
                 op.pendingDelete = true;
             }
-            getOrCreateNestedMap(
-                this.pointLocalToServer,
-                slideId
-            ).delete(pLocKey(current.id, pid));
+            getOrCreateNestedMap(this.pointLocalToServer, slideId).delete(
+                pLocKey(current.id, pid)
+            );
             if (srvId) {
                 clearPendingPoint(this.pendingPoints, slideId, current.id, pid);
             }
@@ -6370,7 +6377,6 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
             op.serverIds.delete(pid);
         }
     }
-
 
     private emitBoxState(localId: Id) {
         const sid = this.currentSlideId();
@@ -6581,5 +6587,262 @@ export class AnnotationEditComponent implements AfterViewInit, OnDestroy {
                 await this.loadSlides(pid);
                 this.goToSlide(updated.id);
             });
+    }
+    async onExportCocoSlide() {
+        const pid = this.projectId();
+        const sid = this.currentSlideId();
+        if (!pid || !sid) {
+            this.snack.open('No slide selected', undefined, { duration: 1600 });
+            return;
+        }
+
+        const coco = await this.buildCocoPoseStyle(pid, [sid]);
+        this.downloadCoco(coco, `coco_${pid}_${sid}.json`);
+        this.snack.open('Exported COCO (slide).', undefined, {
+            duration: 1600,
+        });
+    }
+
+    async onExportCocoAll() {
+        const pid = this.projectId();
+        if (!pid) return;
+        const slides = await this.slideSvc.listSlidesPromise(pid);
+        const coco = await this.buildCocoPoseStyle(
+            pid,
+            slides.map((s) => s.id)
+        );
+        this.downloadCoco(coco, `coco_${pid}_all.json`);
+        this.snack.open(`Exported ${slides.length} slide(s).`, undefined, {
+            duration: 1800,
+        });
+    }
+
+    /**
+     * COCO export:
+     * - Box cats: one per box label (detection).
+     * - One keypoints cat: keypoints = all kp labels (fixed order), skeleton = edges (1-based).
+     * - Box annotations: standard bbox+area.
+     * - Keypoint annotations: ONE per skeleton instance (flat triplets), NO bbox/area.
+     * - image ids: sequential 1..N (no hashing). Also include custom slide_id.
+     */
+    private async buildCocoPoseStyle(projectId: string, slideIds: string[]) {
+        // -------- Categories --------
+        const boxLabels = this.boxLabels(); // [{id,name}]
+        const kpLabels = this.skelLabels(); // [{id,name}]
+
+        let nextCatId = 1;
+        const categories: any[] = [];
+
+        // Box categories
+        const boxCatByLabelId = new Map<string, number>();
+        for (const l of boxLabels) {
+            const id = nextCatId++;
+            categories.push({ id, name: l.name, supercategory: 'object' });
+            boxCatByLabelId.set(l.id, id);
+        }
+
+        // Keypoints category (single)
+        let kpCatId: number | null = null;
+        const kpOrderIds: string[] = kpLabels.map((l) => l.id); // fixed order by label id
+        const kpOrderNames: string[] = kpLabels.map((l) => l.name); // published names
+        const kpIndexById = new Map<string, number>(
+            kpOrderIds.map((id, i) => [id, i])
+        );
+
+        // Build skeleton edges (1-based indices) from ALL edges present locally
+        // (deduped by undirected pair). If you prefer a predefined topology, inject it here.
+        let kpSkeleton: Array<[number, number]> = [];
+        if (kpLabels.length > 0) {
+            const seen = new Set<string>();
+            const pushEdge = (aId: string, bId: string) => {
+                const ai = kpIndexById.get(aId);
+                const bi = kpIndexById.get(bId);
+                if (ai == null || bi == null) return;
+                const key = ai < bi ? `${ai}|${bi}` : `${bi}|${ai}`;
+                if (seen.has(key)) return;
+                seen.add(key);
+                // COCO skeleton is 1-based
+                kpSkeleton.push([ai + 1, bi + 1]);
+            };
+
+            // Prefer edges from in-memory current slide (accurate)
+            for (const sk of this.skeletons() ?? []) {
+                for (const [a, b] of sk.edges ?? []) pushEdge(a, b);
+            }
+
+            kpCatId = nextCatId++;
+            categories.push({
+                id: kpCatId,
+                name: 'skeleton',
+                supercategory: 'pose',
+                keypoints: kpOrderNames,
+                skeleton: kpSkeleton,
+            });
+        }
+
+        // -------- Images --------
+        const images: any[] = [];
+        const imgIdBySlide = new Map<string, number>();
+        let nextImgId = 0;
+
+        // -------- Annotations --------
+        const annotations: any[] = [];
+        let nextAnnId = 1;
+
+        for (const sid of slideIds) {
+            // Natural size
+            const blob = await this.slideSvc.getSlideImageBlob(sid);
+            const bmp = await createImageBitmap(blob);
+            const width = bmp.width,
+                height = bmp.height;
+            try {
+                (bmp as any).close?.();
+            } catch {}
+
+            const imageId = ++nextImgId;
+            imgIdBySlide.set(sid, imageId);
+
+            images.push({
+                id: imageId,
+                file_name: `${sid}.png`,
+                width,
+                height,
+                slide_id: sid, // custom field to map back to your app
+            });
+
+            // Server truth
+            const [boxesDto, kpsDto] = await Promise.all([
+                firstValueFrom(
+                    this.annotationSvc.getAllBoundingBox(projectId, sid)
+                ).catch(() => []),
+                firstValueFrom(
+                    this.annotationSvc.getAllSkeletal(projectId, sid)
+                ).catch(() => []),
+            ]);
+
+            // ---- Boxes -> normal detection annotations
+            for (const b of boxesDto as any[]) {
+                // Expect these fields; adjust if your DTO names differ
+                const labelId: string =
+                    b.labelId ?? b.categoryId ?? b.category ?? '';
+                const catId = boxCatByLabelId.get(labelId);
+                if (!catId) continue;
+
+                const x = Math.round(b.x ?? b.x_pos ?? 0);
+                const y = Math.round(b.y ?? b.y_pos ?? 0);
+                const w = Math.round(b.w ?? b.x_long ?? 0);
+                const h = Math.round(b.h ?? b.y_long ?? 0);
+
+                annotations.push({
+                    id: nextAnnId++,
+                    image_id: imageId,
+                    category_id: catId,
+                    bbox: [x, y, w, h],
+                    area: Math.max(1, w * h),
+                    iscrowd: 0,
+                    segmentation: [],
+                });
+            }
+
+            // ---- Keypoints -> one annotation per skeleton instance (NO bbox/area)
+            if (kpCatId != null && kpOrderIds.length > 0) {
+                // Best source for grouping is local state when current slide === sid
+                // It already has instances with {points: Record<kpId,{x,y,v}>}
+                const currentId = this.currentSlideId();
+                const useLocal =
+                    currentId &&
+                    currentId === sid &&
+                    Array.isArray(this.skeletons()) &&
+                    this.skeletons().length > 0;
+
+                if (useLocal) {
+                    for (const sk of this.skeletons()) {
+                        const flat: number[] = [];
+                        let count = 0;
+                        for (const pid of kpOrderIds) {
+                            const p = sk.points?.[pid];
+                            if (p && (p.v ?? 0) > 0) {
+                                flat.push(
+                                    Math.round(p.x),
+                                    Math.round(p.y),
+                                    p.v
+                                );
+                                count++;
+                            } else {
+                                flat.push(0, 0, 0);
+                            }
+                        }
+                        annotations.push({
+                            id: nextAnnId++,
+                            image_id: imageId,
+                            category_id: kpCatId,
+                            keypoints: flat,
+                            num_keypoints: count,
+                            iscrowd: 0,
+                            // no bbox / no area for keypoint annotations
+                        });
+                    }
+                } else {
+                    // Fallback: we only have flat DTOs; try to group by a best-effort "instance id"
+                    const byInst: Record<string, Array<any>> = {};
+                    for (const p of kpsDto as any[]) {
+                        const inst = String(
+                            p.skeletonId ??
+                                p.id ??
+                                p.skId ??
+                                p.groupId ??
+                                `solo:${p.category || 'kp'}`
+                        ); // heuristic
+                        (byInst[inst] ||= []).push(p);
+                    }
+                    for (const instId of Object.keys(byInst)) {
+                        const pts = byInst[instId];
+                        const flat: number[] = new Array(
+                            kpOrderIds.length * 3
+                        ).fill(0);
+                        let count = 0;
+                        for (const p of pts) {
+                            const kpLabelId: string =
+                                p.pointId ??
+                                p.pid ??
+                                p.categoryId ??
+                                p.category ??
+                                '';
+                            const idx = kpIndexById.get(kpLabelId);
+                            if (idx == null) continue;
+                            const x = Math.round(p.x ?? p.x_pos ?? 0);
+                            const y = Math.round(p.y ?? p.y_pos ?? 0);
+                            const v = typeof p.v === 'number' ? p.v : 2;
+                            flat[idx * 3 + 0] = x;
+                            flat[idx * 3 + 1] = y;
+                            flat[idx * 3 + 2] = v;
+                            if (v > 0) count++;
+                        }
+                        annotations.push({
+                            id: nextAnnId++,
+                            image_id: imageId,
+                            category_id: kpCatId,
+                            keypoints: flat,
+                            num_keypoints: count,
+                            iscrowd: 0,
+                        });
+                    }
+                }
+            }
+        }
+
+        return { images, annotations, categories };
+    }
+
+    private downloadCoco(obj: any, filename: string) {
+        const blob = new Blob([JSON.stringify(obj, null, 2)], {
+            type: 'application/json',
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 }

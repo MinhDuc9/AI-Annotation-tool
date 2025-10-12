@@ -1,75 +1,131 @@
-/* src/app/annotation-edit/topbar/annotation-topbar.component.scss */
+/* Topbar container */
 .topbar {
   height: 64px;
-  display:flex;
-  align-items:center;
+  position: sticky; /* or fixed if you prefer */
+  top: 0;
+  z-index: 1000;
+
+  display: flex;
+  align-items: center;
   padding: 0 12px;
   box-shadow: 0 1px 0 rgba(0,0,0,0.06);
+
+  /* Clickable project name */
+  .project-name {
+    text-transform: none;
+    font-weight: 600;
+
+    .chev {
+      font-size: 18px;
+      margin-left: 2px;
+    }
+
+    &:hover {
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+  }
+
+  /* Presence cluster: current user, others, share */
+  .presence-cluster {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+
+    .dot {
+      opacity: .6;
+      margin: 0 2px;
+    }
+
+    .avatar-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Base avatar tile (applies to both "me" and "others") */
+    .me,
+    .avatar {
+      position: relative;
+      width: var(--avatar-size);
+      height: var(--avatar-size);
+      border-radius: 50%;
+      overflow: hidden;
+      border: 2px solid rgba(0,0,0,0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--mat-surface-variant, #efefef);
+
+      .avatar-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+    }
+
+    /* Online indicator for participants */
+    .avatar .presence {
+      position: absolute;
+      right: -1px;
+      bottom: -1px;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #4caf50;
+      border: 2px solid var(--mat-sys-surface, #121212);
+    }
+
+    .share-btn {
+      margin-left: 4px;
+    }
+  }
+
+  /* Overflow menu (participants list) */
+  .menu-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: inline-grid;
+    place-items: center;
+    font-weight: 600;
+    background: rgba(255,255,255,0.1);
+    margin-right: 8px;
+  }
+
+  .menu-labels {
+    text-align: left;
+    margin-right: 8px;
+
+    .name { font-weight: 600; }
+    .email { opacity: .8; font-size: .85em; }
+  }
+
+  /* Buttons */
+  .more-btn {
+    min-width: 36px;
+    height: 36px;
+    border-radius: 18px;
+  }
 }
 
+/* Utilities */
 .flex-spacer { flex: 1 1 auto; }
+.hide-on-small { display: inline-block; }
 
-/* avatar group */
-.avatar-group { display:flex; align-items:center; gap:8px; margin:0 12px; }
-
-.avatar {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  overflow: hidden;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background: var(--mat-surface-variant, #efefef);
-  border: 1px solid rgba(0,0,0,0.06);
-  box-sizing:border-box;
-}
-
-.avatar-img { width:100%; height:100%; object-fit:cover; display:block; }
-
-.avatar-initials { font-weight:600; color: #333; font-size: 14px; }
-
-.presence {
-  position:absolute;
-  right:-2px;
-  bottom:-2px;
-  width:10px;
-  height:10px;
-  border-radius:50%;
-  background:#bdbdbd;
-  border:2px solid white;
-}
-.presence.online { background:#4caf50; }
-
-.more-btn { min-width:36px; height:36px; border-radius:18px; }
-
-.share-btn { margin-right:8px; }
-
-.menu-avatar {
-  width:34px;
-  height:34px;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  margin-right:10px;
-  border-radius:50%;
-  background: #ddd;
-  font-weight:600;
-}
-
-.menu-labels { text-align:left; margin-right:8px; }
-.menu-labels .name { font-weight:600; }
-.menu-labels .email { font-size:12px; color: rgba(0,0,0,0.6); }
-
-.hide-on-small { display:inline-block; }
-@media (max-width:720px) {
-  .hide-on-small { display:none; }
-  .avatar { width:34px; height:34px; }
-}
-
+/* === Avatar size: single source of truth === */
 .topbar {
-  position: sticky; /* or fixed */
-  top: 0;
-  z-index: 1000; /* above mat-sidenav-container content */
+  --avatar-size: 28px; /* default avatar size for both me & others */
+}
+
+/* Responsive tweaks */
+@media (max-width: 720px) {
+  .hide-on-small { display: none; }
+  .topbar { --avatar-size: 24px; }
+}
+
+/* Share button sits BEFORE the presence cluster in the DOM, add space on its right */
+.topbar .share-btn {
+  margin: 0 12px 0 8px; /* left of share; right space before participants */
 }

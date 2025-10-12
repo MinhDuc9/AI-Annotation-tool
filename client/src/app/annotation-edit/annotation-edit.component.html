@@ -1,5 +1,7 @@
 <!-- top of file -->
-<app-annotation-topbar (undo)="onTopbarUndo()" (redo)="onTopbarRedo()">
+<app-annotation-topbar [projectId]="projectId()" [projectName]="projectName()" [slideId]="currentSlideId() || ''"
+  [currentUserId]="currentUserId()" [currentUserName]="currentUserName()" (undo)="onUndo()" (redo)="onRedo()"
+  (exportSlideCoco)="onExportCocoSlide()" (exportAllCoco)="onExportCocoAll()">
 </app-annotation-topbar>
 
 <mat-sidenav-container class="layout">
@@ -7,6 +9,7 @@
   <mat-sidenav position="end" mode="side" [(opened)]="sidenavOpen" class="ann-sidenav">
 
     <mat-tab-group class="sidebar-tabs">
+      @if(canAnnotate()) {
       <!-- TAB: Annotations (your existing sidebar UI, unchanged content) -->
       <mat-tab label="Annotations">
         <div class="sidenav-header">
@@ -19,10 +22,6 @@
           @if (isAnnotatingOne()) {
           <mat-progress-spinner diameter="20" mode="indeterminate"></mat-progress-spinner>
           }
-          <input type="file" hidden #fileChooser accept="image/*" (change)="onChooseImage($event)">
-          <button mat-icon-button (click)="fileChooser.click()"
-            matTooltip="Load Image"><mat-icon>image</mat-icon></button>
-          <button mat-icon-button (click)="onExport()" matTooltip="Export JSON"><mat-icon>download</mat-icon></button>
           <button mat-icon-button (click)="onClear()" matTooltip="Clear"><mat-icon>delete_sweep</mat-icon></button>
           <button mat-icon-button (click)="sidenavOpen = false"
             matTooltip="Close"><mat-icon>chevron_right</mat-icon></button>
@@ -278,6 +277,7 @@
           }
         </div>
       </mat-tab>
+      }
 
       <mat-tab label="Slides">
         <div class="sidenav-header">
@@ -366,18 +366,20 @@
   <mat-sidenav-content>
     <!-- Tool rail -->
     <div class="tool-rail elevation">
+      @if(canAnnotate()) {
       <button class="tool-btn" [class.active]="currentTool().kind === 'select'" (click)="selectTool('select')"
-        title="Select (V)">
+        title="Select (V)" [disabled]="!canAnnotate()">
         <mat-icon fontIcon="near_me"></mat-icon>
       </button>
-      <button class="tool-btn" [class.active]="currentTool().kind === 'box'" (click)="selectTool('box')"
-        title="Box (B)">
+      <button class="tool-btn" [class.active]="currentTool().kind === 'box'" (click)="selectTool('box')" title="Box (B)"
+        [disabled]="!canAnnotate()">
         <mat-icon fontIcon="crop_din"></mat-icon>
       </button>
       <button class="tool-btn" [class.active]="currentTool().kind === 'skeleton'" (click)="selectTool('skeleton')"
-        title="Skeleton (K)">
+        title="Skeleton (K)" [disabled]="!canAnnotate()">
         <mat-icon fontIcon="polyline"></mat-icon>
       </button>
+      }
       <div class="rail-sep"></div>
       <button class="tool-btn" [class.active]="currentTool().kind === 'stagePan'" (click)="selectTool('stagePan')"
         title="Pan canvas (H)">

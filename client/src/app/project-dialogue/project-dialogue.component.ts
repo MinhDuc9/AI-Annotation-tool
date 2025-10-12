@@ -248,12 +248,16 @@ export class ProjectDialogueComponent {
         })
       ).subscribe({
         next: () => {
-          this._snackBar.open(
-            `Auto-annotation complete for ${selectedIds.length} slide(s).`,
-            'Close',
-            { duration: 3000 }
-          );
-        },
+  const ref = this._snackBar.open(
+    `Auto-annotation complete for ${selectedIds.length} slide(s).`,
+    'Refresh',
+    { duration: 8000 }
+  );
+  ref.onAction().subscribe(() => {
+    // Full page reload is simplest + robust (works whether user is on Home or inside a project)
+    window.location.reload();
+  });
+},
         error: () => {
           this._snackBar.open(
             'Auto-annotation failed. You can retry from the project later.',

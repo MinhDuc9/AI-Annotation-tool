@@ -1,68 +1,79 @@
 <!-- src/app/annotation-edit/topbar/annotation-topbar.component.html -->
 <mat-toolbar class="topbar" color="surface">
-  <!-- far-left back -->
+  <!-- Back -->
   <button mat-icon-button aria-label="Back to home" (click)="goBack()">
     <mat-icon>arrow_back</mat-icon>
   </button>
 
-  <!-- push everything to right -->
+  <!-- Project name + menu (exports only) -->
+  <button class="project-name" mat-button [matMenuTriggerFor]="projectMenu">
+    {{ projectName || 'Project' }}
+    <mat-icon class="chev">expand_more</mat-icon>
+  </button>
+  <mat-menu #projectMenu="matMenu">
+    <button mat-menu-item (click)="onExportSlideCOCO()">
+      <mat-icon>download</mat-icon>
+      <span>Export this slide (COCO)</span>
+    </button>
+    <button mat-menu-item (click)="onExportAllCOCO()">
+      <mat-icon>archive</mat-icon>
+      <span>Export all slides (COCO)</span>
+    </button>
+  </mat-menu>
+
   <span class="flex-spacer"></span>
 
-  <!-- undo / redo -->
-  <button mat-icon-button aria-label="Undo" (click)="undoClicked()" [disabled]="!canUndo()" matTooltip="Undo (Ctrl/Cmd+Z)">
+  <!-- Undo / Redo -->
+  <button mat-icon-button aria-label="Undo" (click)="onUndo()" [disabled]="!canUndo()" matTooltip="Undo (Ctrl/Cmd+Z)">
     <mat-icon>undo</mat-icon>
   </button>
-
-  <button mat-icon-button aria-label="Redo" (click)="redoClicked()" [disabled]="!canRedo()" matTooltip="Redo (Ctrl/Cmd+Shift+Z)">
+  <button mat-icon-button aria-label="Redo" (click)="onRedo()" [disabled]="!canRedo()" matTooltip="Redo (Ctrl/Cmd+Shift+Z)">
     <mat-icon>redo</mat-icon>
   </button>
 
-  <!-- collaborator avatars -->
-  <div class="avatar-group" role="group" aria-label="Collaborators">
-    @for (user of visibleCollaborators(); track user.id) {
-      <div class="avatar" matTooltip="{{ user.name }}">
-        <ng-container>
-            @if (user.avatarUrl) {
-            <img class="avatar-img" src="{{ user.avatarUrl }}" alt="{{ user.name }}" />
-            } @else {
-            <span class="avatar-initials">{{ initials(user.name) }}</span>
-            }
-        </ng-container>
-        <span class="presence" [class.online]="user.online"></span>
-      </div>
-    }
+  <!-- Share (moved next to participants) -->
+    <button mat-stroked-button class="share-btn" (click)="onOpenShare()">
+      <mat-icon>group_add</mat-icon>
+      Share
+    </button>
+    
+  <!-- Current user + participants + Share -->
+  <div class="presence-cluster" role="group" aria-label="Collaborators">
 
+    <!-- Others (visible) -->
+    <div class="avatar-group">
+      @for (user of visibleOthers(); track user.socketId) {
+        <div class="avatar" [matTooltip]="user.userName || 'User'">
+          <img class="avatar-img" [src]="avatarUrlFromName(user.userName || '')" [alt]="user.userName || 'User'"/>
+          <span class="presence" [class.online]="true"></span>
+        </div>
+      }
+    </div>
+
+    <!-- Overflow list -->
     @if (extraCount() > 0) {
-      <button mat-button class="more-btn" [matMenuTriggerFor]="collabMenu">+{{ extraCount() }}</button>
-
+      <button mat-button class="more-btn" [matMenuTriggerFor]="collabMenu">
+        +{{ extraCount() }}
+      </button>
       <mat-menu #collabMenu="matMenu">
-        @for (u of collaborators(); track u.id) {
+        @for (u of others(); track u.socketId) {
           <button mat-menu-item>
-            <div class="menu-avatar">{{ initials(u.name) }}</div>
+            <div class="menu-avatar">{{ initials(u.userName || '') }}</div>
             <div class="menu-labels">
-              <div class="name">{{ u.name }}</div>
-              <div class="email">{{ u.email }}</div>
+              <div class="name">{{ u.userName || 'User' }}</div>
             </div>
-            <mat-icon class="status" *ngIf="u.online">circle</mat-icon>
           </button>
         }
       </mat-menu>
     }
+
+    <!-- You -->
+    @if (currentUserName) {
+      <span class="dot">•</span>
+      <div class="me" [matTooltip]="currentUserName">
+        <img class="avatar-img" [src]="avatarUrlFromName(currentUserName)" [alt]="currentUserName"/>
+      </div>
+    }
+
   </div>
-
-  <!-- share -->
-  <button mat-stroked-button class="share-btn" (click)="openShare()">
-    <mat-icon>share</mat-icon> <span class="hide-on-small">Share</span>
-  </button>
-
-  <!-- account -->
-  <button mat-icon-button [matMenuTriggerFor]="accountMenu" aria-label="Account menu">
-    <mat-icon>account_circle</mat-icon>
-  </button>
-  <mat-menu #accountMenu="matMenu">
-    <button mat-menu-item>Profile</button>
-    <button mat-menu-item>Settings</button>
-    <mat-divider></mat-divider>
-    <button mat-menu-item>Sign out</button>
-  </mat-menu>
 </mat-toolbar>

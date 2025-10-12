@@ -40,7 +40,6 @@ export class SidebarComponent {
         });
 
         dialogRef.afterClosed().subscribe((result) => {
-            if (!result) return;
             this.projectCreated.emit(true);
         });
     }
