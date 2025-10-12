@@ -129,7 +129,7 @@ export class SocketService {
         : API_BASE_URL;
 
     this.socket = io(socketUrl, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       autoConnect: true,
     });
 
@@ -274,6 +274,22 @@ export class SocketService {
 
   onError(): Observable<{ message: string }> {
     return this.fromEventInZone('error');
+  }
+
+  onConnect(): Observable<void> {
+    return this.fromEventInZone('connect');
+  }
+
+  onDisconnect(): Observable<void> {
+    return this.fromEventInZone('disconnect');
+  }
+
+  onConnectError(): Observable<unknown> {
+    return this.fromEventInZone('connect_error');
+  }
+
+  isConnected(): boolean {
+    return this.socket.connected;
   }
 
   disconnect(): void {
