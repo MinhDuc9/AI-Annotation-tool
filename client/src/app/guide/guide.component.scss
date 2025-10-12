@@ -1,0 +1,81 @@
+:host {
+  display: block;
+  color: var(--mat-sys-on-surface, #222);
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 56px;
+}
+
+.guide-header {
+  display: grid;
+  place-items: center;
+  padding: 28px 0 8px;
+}
+
+.logo-link {
+  display: inline-block;
+  text-decoration: none;
+  border-radius: 12px;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+  outline: none;
+}
+.logo-link:focus-visible {
+  box-shadow: 0 0 0 3px rgba(25,118,210,.35);
+}
+.logo-link:hover {
+  transform: translateY(-1px);
+}
+.logo {
+  width: 320px;
+  height: auto;
+  display: block;
+}
+
+.intro p {
+  margin: 0 0 4px;
+}
+
+section {
+  margin: 24px 0;
+}
+section h2 {
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+section h3 {
+  margin: 12px 0 6px;
+  font-weight: 600;
+}
+
+ul { padding-left: 18px; }
+ul li { margin: 6px 0; }
+
+.kbd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px 16px;
+  padding-left: 0;
+  list-style: none;
+}
+.kbd-grid li { margin: 0; }
+
+kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  padding: 0 6px;
+  border: 1px solid rgba(0,0,0,.18);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: linear-gradient(#fff, #f6f6f6);
+  margin-right: 6px;
+  display: inline-block;
+}
+
+.footer {
+  margin-top: 32px;
+  display: flex;
+  justify-content: center;
+}

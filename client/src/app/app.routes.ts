@@ -20,6 +20,10 @@ export const routes: Routes = [
         loadComponent: () => import('./annotation-edit/annotation-edit.component').then(m => m.AnnotationEditComponent)
     },
     {
+        path: 'guide',
+        loadComponent: () => import('./guide/guide.component').then(m => m.GuideComponent)
+    },
+    {
         path: '**',
         redirectTo: ''
     }

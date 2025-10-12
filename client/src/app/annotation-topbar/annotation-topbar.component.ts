@@ -15,7 +15,7 @@ import {
     DestroyRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatIconModule } from '@angular/material/icon';
@@ -38,15 +38,16 @@ import { AnnotationHistoryService } from '../services/annotation-history.service
     selector: 'app-annotation-topbar',
     standalone: true,
     imports: [
-        CommonModule,
-        MatToolbarModule,
-        MatIconModule,
-        MatButtonModule,
-        MatMenuModule,
-        MatTooltipModule,
-        MatDividerModule,
-        MatDialogModule,
-    ],
+    CommonModule,
+    MatToolbarModule,
+    MatIconModule,
+    MatButtonModule,
+    MatMenuModule,
+    MatTooltipModule,
+    MatDividerModule,
+    MatDialogModule,
+    RouterLink
+],
     templateUrl: './annotation-topbar.component.html',
     styleUrls: ['./annotation-topbar.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
