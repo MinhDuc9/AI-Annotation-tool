@@ -1,5 +1,39 @@
-<p>Hello {{username()}}!</p>
+<!-- Sidebar (fixed) -->
+<app-sidebar [isLeftSidebarCollapsed]="isLeftSidebarCollapsed()"
+    (changeIsLeftSidebarCollapsed)="changeIsLeftSidebarCollapsed($event)" (projectCreated)="projectCreated($event)"/>
 
-<button (click) = "getUsers()">Console Log (Get All Users)</button>
+<!-- Page content with proper left offset and page padding -->
+<div class="page" [class.page--collapsed]="isLeftSidebarCollapsed()">
+    <div class="page__inner">
+        <!-- OPTIONAL: you can add a heading here
+    <h1 class="page__title">Projects</h1>
+    -->
 
-<button (click) = "openDialog()">Open Project Dialogue</button>
+        <div class="pc-grid">
+            @for (c of cards(); track c.id) {
+            <mat-card class="pc" appearance="outlined" (click)="this.router.navigate(['/annotate', c.id])">
+                @if (c.imgUrl) {
+                <img mat-card-image [src]="c.imgUrl" [alt]="c.name + ' - first slide image'" loading="lazy"
+                    (error)="onImgError($event)" />
+                } @else {
+                <div class="pc__skeleton" aria-hidden="true"></div>
+                }
+
+                <mat-card-footer class="pc__footer">
+                    <div class="pc__meta">
+                        <div class="pc__title" [title]="c.name">
+                            {{ c.name }}
+                        </div>
+                        <span class="pc__role" [class.pc__role--admin]="c.role === 'admin'"
+                            [class.pc__role--write]="c.role === 'write'" [class.pc__role--read]="c.role === 'read'">
+                            {{ c.role | titlecase }}
+                        </span>
+                    </div>
+                </mat-card-footer>
+            </mat-card>
+            } @empty {
+            <div class="pc__empty">No projects yet</div>
+            }
+        </div>
+    </div>
+</div>

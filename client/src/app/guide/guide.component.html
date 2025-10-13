@@ -1,0 +1,137 @@
+<!-- Header: centered logo that routes home -->
+<header class="guide-header">
+  <a class="logo-link" [routerLink]="['/home']" aria-label="Go to Home">
+    <img src="AviScribe-logo.png" alt="AviScribe" class="logo" />
+  </a>
+</header>
+
+<main class="container mat-typography">
+  <section class="intro">
+    <h1>AviScribe — Quick Guide</h1>
+    <p>
+      AviScribe is a collaborative image-annotation workspace for bounding boxes and keypoints
+      (with skeletons). It supports real-time presence, role-based access, comments, undo/redo,
+      COCO export, and smooth pan/zoom for large slides.
+    </p>
+  </section>
+
+  <mat-divider></mat-divider>
+
+  <section>
+    <h2>Core Concepts</h2>
+    <ul>
+      <li><strong>Slides:</strong> Images inside a project. Use the left rail to switch slides.</li>
+      <li><strong>Tools:</strong> Select, Bounding Box, Skeleton (keypoints + edges), and Pan/Hand.</li>
+      <li><strong>Labels:</strong> Separate label sets for boxes and keypoints. Add, pick, and delete (when unused).</li>
+      <li><strong>History:</strong> Undo/redo supports create, move, resize, color, and label changes.</li>
+      <li><strong>Collaboration:</strong> Presence &amp; locking prevent conflicts while others edit.</li>
+      <li><strong>Comments:</strong> Real-time thread per slide, with optimistic posting and connectivity status.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Roles &amp; Permissions</h2>
+    <p>
+      Project roles are enforced everywhere. <strong>Admin</strong> and <strong>Write</strong> can annotate.
+      <strong>Read</strong> can pan/zoom and view annotations/comments but cannot use selection, box, or skeleton tools,
+      and the Annotations tab is hidden for them.
+    </p>
+  </section>
+
+  <section>
+    <h2>Working with Tools</h2>
+
+    <h3>Pan &amp; Zoom</h3>
+    <ul>
+      <li>Hold <kbd>Space</kbd> or use the Hand tool to drag the canvas.</li>
+      <li>Mouse wheel zooms around the cursor; zoom keeps stroke sizes readable.</li>
+      <li>Images auto-fit in the desk; thumbnails are generated lazily for the slide rail.</li>
+    </ul>
+
+    <h3>Select</h3>
+    <ul>
+      <li>Click a box edge to select; drag inside to move; drag a handle to resize.</li>
+      <li>Click a bone (edge) to select the whole skeleton; drag to move all points.</li>
+      <li>Click a point to select it; drag to move it (neighboring bones update).</li>
+      <li><kbd>Delete</kbd>/<kbd>Backspace</kbd> removes the selected box, point, or skeleton.</li>
+    </ul>
+
+    <h3>Bounding Boxes</h3>
+    <ul>
+      <li>Draw with the Box tool; color and label live in the right sidebar.</li>
+      <li>Labels are name-based, de-duplicated case-insensitively. You can only delete labels that aren’t used.</li>
+    </ul>
+
+    <h3>Skeletons (Keypoints)</h3>
+    <ul>
+      <li>Click empty space to create a skeleton with one point (uses active keypoint label and color).</li>
+      <li>With a point selected, click empty space to add a point and auto-connect an edge.</li>
+      <li>Click an existing point:
+        <ul>
+          <li>Same skeleton: if not already connected, it links the points.</li>
+          <li>Different skeletons: merges into the selected skeleton (keeps its color), then links.</li>
+        </ul>
+      </li>
+      <li>Keypoint labels are per-point; the skeleton’s color styles bones/handles.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Collaboration &amp; Presence</h2>
+    <ul>
+      <li>Entering a slide joins its real-time room; leaving switches rooms automatically.</li>
+      <li>Locks are applied while someone is “touching” a box or keypoint to prevent conflicts.</li>
+      <li>Short delays on unlocks reduce flicker when people stop moving the mouse.</li>
+      <li>Participants &amp; your avatar appear in the top bar; comments list shows authors by display name.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Comments</h2>
+    <ul>
+      <li>Each slide has a live comment thread.</li>
+      <li>Comments post optimistically and reconcile when the server confirms them.</li>
+      <li>Connectivity state is surfaced; failures are notified via snackbars.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Export</h2>
+    <ul>
+      <li><strong>COCO (per slide):</strong> Export boxes and keypoints. Keypoints are independent from boxes; users decide
+        if/how they relate. Image ids are non-hashed (stable by slide id), and category names come from your label sets.</li>
+      <li><strong>COCO (all slides):</strong> From the project name menu, export an aggregate dataset across slides.</li>
+      <li>(Optional) Image ZIP export can be added later; it streams blobs with minimal memory overhead.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Keyboard Shortcuts</h2>
+    <ul class="kbd-grid">
+      <li><kbd>H</kbd> Hand / Pan</li>
+      <li><kbd>V</kbd> Select</li>
+      <li><kbd>B</kbd> Bounding Box</li>
+      <li><kbd>K</kbd> Skeleton</li>
+      <li><kbd>Space</kbd> Hold to Pan</li>
+      <li><kbd>Delete</kbd> / <kbd>Backspace</kbd> Delete selection</li>
+      <li><kbd>Ctrl/⌘</kbd> while adding points: Keep chaining</li>
+      <li>Top bar: Undo / Redo</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Troubleshooting</h2>
+    <ul>
+      <li>If a tool seems disabled, check your role. Read-only users cannot annotate.</li>
+      <li>If images look soft: wait for the full image to load; thumbnails are lower-res.</li>
+      <li>If comments don’t appear, verify socket connection and reload the slide.</li>
+    </ul>
+  </section>
+
+  <footer class="footer">
+    <a [routerLink]="['/home']" mat-button>
+      <mat-icon aria-hidden="true">arrow_back</mat-icon>
+      Back to Home
+    </a>
+  </footer>
+</main>

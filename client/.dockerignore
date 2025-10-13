@@ -1,0 +1,32 @@
+# Ignore big/ephemeral stuff
+node_modules
+**/node_modules
+.pnpm-store
+**/.pnpm-store
+dist
+build
+.tmp
+.cache
+.next
+out
+
+# VCS
+.git
+.gitignore
+
+# OS/editor junk
+.DS_Store
+*.log
+node_modules
+.pnpm-store
+.angular
+dist
+coverage
+.tmp
+.git
+.gitignore
+Dockerfile
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+**/*.log

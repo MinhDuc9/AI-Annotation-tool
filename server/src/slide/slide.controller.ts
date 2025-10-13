@@ -1,20 +1,24 @@
 import {
-    Controller,
-    Get,
-    Post,
     Body,
-    Patch,
-    Param,
+    Controller,
     Delete,
+    Get,
+    Param,
+    Patch,
+    Post,
+    UploadedFile,
     UseGuards,
     UseInterceptors,
-    UploadedFile,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { CreateBoundingBoxDto } from "../bounding-box/dto/create-bounding-box.dto";
+import { UpdateBoundingBoxDto } from "../bounding-box/dto/update-bounding-box.dto";
+import { CreateSkeletalDto } from "../skeletal/dto/create-skeletal.dto";
+import { UpdateSkeletalDto } from "../skeletal/dto/update-skeletal.dto";
+import { Roles } from "../roles/roles.decorator";
+import { RolesGuard } from "../roles/roles.guard";
 import { SlideService } from "./slide.service";
 import { UpdateSlideDto } from "./dto/update-slide.dto";
-import { RolesGuard } from "src/roles/roles.guard";
-import { Roles } from "src/roles/roles.decorator";
-import { FileInterceptor } from "@nestjs/platform-express";
 
 @Controller("slide")
 @UseGuards(RolesGuard)
@@ -57,5 +61,103 @@ export class SlideController {
     @Delete(":slide_id")
     remove(@Param("slide_id") slideId: string) {
         return this.slideService.remove(slideId);
+    }
+
+    @Get(":project_id/:slide_id/bounding_box")
+    getAllBoundingBoxes(
+        @Param("project_id")
+        projectId: string,
+        @Param("slide_id") slideId: string,
+    ) {
+        return this.slideService.getAllBoundingBoxes(projectId, slideId);
+    }
+
+    @Post(":project_id/:slide_id/bounding_box")
+    createBoundingBox(
+        @Param("project_id")
+        projectId: string,
+        @Param("slide_id") slideId: string,
+        @Body() dto: CreateBoundingBoxDto,
+    ) {
+        return this.slideService.createBoundingBox(projectId, slideId, dto);
+    }
+
+    @Patch(":project_id/:slide_id/bounding_box/:bounding_box_id")
+    updateBoundingBox(
+        @Param("project_id")
+        projectId: string,
+        @Param("slide_id") slideId: string,
+        @Param("bounding_box_id")
+        boundingBoxId: string,
+        @Body() dto: UpdateBoundingBoxDto,
+    ) {
+        return this.slideService.updateBoundingBox(
+            projectId,
+            slideId,
+            boundingBoxId,
+            dto,
+        );
+    }
+
+    @Delete(":project_id/:slide_id/bounding_box/:bounding_box_id")
+    deleteBoundingBox(
+        @Param("project_id")
+        projectId: string,
+        @Param("slide_id") slideId: string,
+        @Param("bounding_box_id")
+        boundingBoxId: string,
+    ) {
+        return this.slideService.deleteBoundingBox(
+            projectId,
+            slideId,
+            boundingBoxId,
+        );
+    }
+
+    @Post(":project_id/:slide_id/skeletal")
+    createSkeletal(
+        @Param("project_id")
+        projectId: string,
+        @Param("slide_id") slideId: string,
+        @Body() dto: CreateSkeletalDto,
+    ) {
+        return this.slideService.createSkeletal(projectId, slideId, dto);
+    }
+
+    @Patch(":project_id/:slide_id/skeletal/:skeletal_id")
+    updateSkeletal(
+        @Param("project_id")
+        projectId: string,
+        @Param("slide_id") slideId: string,
+        @Param("skeletal_id")
+        skeletalId: string,
+        @Body() dto: UpdateSkeletalDto,
+    ) {
+        return this.slideService.updateSkeletal(
+            projectId,
+            slideId,
+            skeletalId,
+            dto,
+        );
+    }
+
+    @Get(":project_id/:slide_id/skeletal")
+    getAllSkeletals(
+        @Param("project_id")
+        projectId: string,
+        @Param("slide_id") slideId: string,
+    ) {
+        return this.slideService.getAllSkeletals(projectId, slideId);
+    }
+
+    @Delete(":project_id/:slide_id/skeletal/:skeletal_id")
+    deleteSkeletal(
+        @Param("project_id")
+        projectId: string,
+        @Param("slide_id") slideId: string,
+        @Param("skeletal_id")
+        skeletalId: string,
+    ) {
+        return this.slideService.deleteSkeletal(projectId, slideId, skeletalId);
     }
 }

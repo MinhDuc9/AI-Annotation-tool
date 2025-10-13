@@ -7,3 +7,7 @@ Dockerfile
 docker-compose.yaml
 .env
 uploads
+ai_server/Bird-Detection-main/__pycache__/
+ai_server/Bird-Detection-main/test/
+ai_server/Bird-Detection-main/venv/
+**/*.pyc

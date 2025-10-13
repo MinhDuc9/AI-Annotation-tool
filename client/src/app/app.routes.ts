@@ -1,10 +1,17 @@
-import { Routes } from '@angular/router';
+import { CanActivateFn, Router, Routes } from '@angular/router';
+import { HomeComponent } from './home/home.component';
+import { inject } from '@angular/core';
+
+export const authGuard: CanActivateFn = () => {
+  const token = sessionStorage.getItem('token');
+  return token ? true : inject(Router).parseUrl('/login');
+};
 
 export const routes: Routes = [
     {
         path: '',
         pathMatch: 'full',
-        loadComponent: () => import('./home/home.component').then(m => m.HomeComponent)
+        component: HomeComponent
     },
     {
         path: 'register',
@@ -15,8 +22,13 @@ export const routes: Routes = [
         loadComponent: () => import('./login/login.component').then(m => m.LoginComponent)
     },
     {
-        path: 'project-dialogue',
-        loadComponent: () => import('./project-dialogue/project-dialogue.component').then(m => m.ProjectDialogueComponent)
+        path: 'annotate/:project_id',
+        loadComponent: () => import('./annotation-edit/annotation-edit.component').then(m => m.AnnotationEditComponent),
+        canActivate: [authGuard]
+    },
+    {
+        path: 'guide',
+        loadComponent: () => import('./guide/guide.component').then(m => m.GuideComponent)
     },
     {
         path: '**',

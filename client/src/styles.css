@@ -2,3 +2,25 @@
 
 html, body { height: 100%; }
 body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; }
+
+/* Make the tab group and its body fill the sidebar */
+.sidebar-tabs {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-tabs .mat-mdc-tab-body-wrapper {
+  height: 100%;          /* <- the rule you tested in DevTools */
+}
+
+.sidebar-tabs .mat-mdc-tab-body,
+.sidebar-tabs .mat-mdc-tab-body-content {
+  height: 100%;
+}
+
+/* Optional: ensure the parent column actually provides height */
+.sidebar, .sidebar *[data-sidebar-root] {  /* adapt selector to your layout */
+  height: 100%;
+  min-height: 0;
+}

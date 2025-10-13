@@ -91,3 +91,8 @@ pids/
 # sqlite database files
 *.sqlite
 *.sqlite3
+
+# Python
+__pycache__
+.cache_ai
+venv

@@ -87,7 +87,7 @@ def analyze_image(image_path: str):
         })
 
         # === Pose estimation ===
-        keypoints_list = []
+        keypoints_dict = {}
         if crop_img is not None and crop_img.size > 0:
             by_top = y2 - bbox_h
             pose_res = pose_model([crop_img])[0]
@@ -110,23 +110,24 @@ def analyze_image(image_path: str):
                     gx = float(x1 + kx)
                     gy = float(by_top + ky)
                     kp_map[k_id] = kp_uuid
-                    keypoints_list.append({
+                    keypoints_dict[kp_uuid] = {
                         "key_id": kp_uuid,
                         "x": gx,
                         "y": gy,
                         "colour": species_info["color"]
-                    })
+                    }
 
                 # link edges
                 for (i, j) in SKELETON_EDGES:
                     if i in kp_map and j in kp_map:
-                        keypoints_list.append({
-                            "key_id": kp_map[i],
-                            "x": next(kp["x"] for kp in keypoints_list if kp["key_id"] == kp_map[i]),
-                            "y": next(kp["y"] for kp in keypoints_list if kp["key_id"] == kp_map[i]),
-                            "key_point_to": kp_map[j],
-                            "colour": species_info["color"]
-                        })
+                        src_id = kp_map[i]
+                        dst_id = kp_map[j]
+                        entry = keypoints_dict[src_id]
+                        entry.setdefault("key_point_to", [])
+                        if dst_id not in entry["key_point_to"]:
+                            entry["key_point_to"].append(dst_id)
+
+        keypoints_list = list(keypoints_dict.values())
 
         skeletal_list.append({
             "bb_id": bb_id,

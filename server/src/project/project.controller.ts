@@ -11,8 +11,8 @@ import {
 import { ProjectService } from "./project.service";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
-import { RolesGuard } from "src/roles/roles.guard";
-import { Roles } from "src/roles/roles.decorator";
+import { RolesGuard } from "../roles/roles.guard";
+import { Roles } from "../roles/roles.decorator";
 
 @Controller("project")
 @UseGuards(RolesGuard)
@@ -27,6 +27,12 @@ export class ProjectController {
     @Get("all")
     findAll() {
         return this.projectService.findAll();
+    }
+
+    @Get("all_user_project/:project_id")
+    @Roles("admin", "write", "read")
+    getAllUserProject(@Param("project_id") projectId: string) {
+        return this.projectService.getAllUserProject(projectId);
     }
 
     @Patch("add_write_user/:user_email/:project_id")

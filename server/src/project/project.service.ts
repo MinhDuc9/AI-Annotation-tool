@@ -11,11 +11,11 @@ import { UpdateProjectDto } from "./dto/update-project.dto";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Project } from "./entities/project.entity";
 import { Repository } from "typeorm";
-import { User } from "src/user/entities/user.entity";
+import { User } from "../user/entities/user.entity";
 import { REQUEST } from "@nestjs/core";
 import { Request } from "express";
 import { JwtPayload } from "../jwt/jwt-payload.interface";
-import { ProjectUserRole } from "src/project-user-role/entities/project-user-role.entity";
+import { ProjectUserRole } from "../project-user-role/entities/project-user-role.entity";
 
 @Injectable({ scope: Scope.REQUEST })
 export class ProjectService {
@@ -83,7 +83,7 @@ export class ProjectService {
     async ensureUserOwnsProject(projectId: string): Promise<Project> {
         const project = await this.projectRepository.findOne({
             where: { id: projectId },
-            relations: ["userRoles"],
+            relations: ["userRoles", "userRoles.user"],
         });
 
         if (!project) {
@@ -156,6 +156,30 @@ export class ProjectService {
         project.userRoles.push(readRole);
 
         return this.projectRepository.save(project);
+    }
+
+    async getAllUserProject(projectId: string): Promise<
+        {
+            userId: string;
+            userName: string;
+            email: string;
+            role: "admin" | "write" | "read";
+        }[]
+    > {
+        // Ensure the requesting user belongs to the project before listing members
+        await this.ensureUserOwnsProject(projectId);
+
+        const projectRoles = await this.projectUserRoleRepository.find({
+            where: { projectId },
+            relations: ["user"],
+        });
+
+        return projectRoles.map(({ role, user }) => ({
+            role,
+            userId: user.id,
+            userName: user.userName,
+            email: user.email,
+        }));
     }
 
     async update(

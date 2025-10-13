@@ -1,6 +1,6 @@
 import { Exclude } from "class-transformer";
-import { Project } from "src/project/entities/project.entity";
-import { User } from "src/user/entities/user.entity";
+import { Project } from "../../project/entities/project.entity";
+import { User } from "../../user/entities/user.entity";
 import {
     Entity,
     Column,

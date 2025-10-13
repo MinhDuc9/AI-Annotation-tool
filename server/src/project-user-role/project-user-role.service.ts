@@ -3,11 +3,11 @@ import { REQUEST } from "@nestjs/core";
 import { Request } from "express";
 import { CreateProjectUserRoleDto } from "./dto/create-project-user-role.dto";
 import { ProjectUserRole } from "./entities/project-user-role.entity";
-import { Project } from "src/project/entities/project.entity";
-import { User } from "src/user/entities/user.entity";
+import { Project } from "../project/entities/project.entity";
+import { User } from "../user/entities/user.entity";
 import { Repository } from "typeorm/repository/Repository";
 import { InjectRepository } from "@nestjs/typeorm";
-import { JwtPayload } from "src/jwt/jwt-payload.interface";
+import { JwtPayload } from "../jwt/jwt-payload.interface";
 
 @Injectable({ scope: Scope.REQUEST })
 export class ProjectUserRoleService {

@@ -5,7 +5,7 @@ import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { LoginUserDto } from "./dto/login-user.dto";
 import { User } from "./entities/user.entity";
-import { AuthService } from "src/auth/auth.service";
+import { AuthService } from "../auth/auth.service";
 import { REQUEST } from "@nestjs/core";
 import { Request } from "express";
 import { JwtPayload } from "../jwt/jwt-payload.interface";

@@ -1,5 +1,5 @@
-import { ProjectUserRole } from "src/project-user-role/entities/project-user-role.entity";
-import { Slide } from "src/slide/entities/slide.entity";
+import { ProjectUserRole } from "../../project-user-role/entities/project-user-role.entity";
+import { Slide } from "../../slide/entities/slide.entity";
 import { Entity, Column, PrimaryGeneratedColumn, OneToMany } from "typeorm";
 
 @Entity()

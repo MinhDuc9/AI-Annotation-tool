@@ -20,6 +20,11 @@ import { BullModule } from "@nestjs/bullmq";
 import type { BullRootModuleOptions } from "@nestjs/bullmq";
 import type { DynamicModule } from "@nestjs/common";
 import type { RegisterQueueOptions } from "@nestjs/bullmq";
+import { BoundingBoxModule } from "./bounding-box/bounding-box.module";
+import { BoundingBox } from "./bounding-box/entities/bounding-box.entity";
+import { SkeletalModule } from "./skeletal/skeletal.module";
+import { Skeletal } from "./skeletal/entities/skeletal.entity";
+import { AiMicroserviceModule } from "./ai-microservice/ai-microservice.module";
 
 type BullModuleStatics = {
     forRoot: (options: BullRootModuleOptions) => DynamicModule;
@@ -45,7 +50,15 @@ const TypedBullModule = BullModule as unknown as BullModuleStatics;
                 username: config.get<string>("USER_NAME"),
                 password: config.get<string>("DATABASE_PASS"),
                 database: config.get<string>("DATABASE"),
-                entities: [User, Project, ProjectUserRole, Slide, Comment],
+                entities: [
+                    User,
+                    Project,
+                    ProjectUserRole,
+                    Slide,
+                    Comment,
+                    BoundingBox,
+                    Skeletal,
+                ],
                 synchronize: true,
                 logging: true,
             }),
@@ -61,13 +74,20 @@ const TypedBullModule = BullModule as unknown as BullModuleStatics;
                 },
             }),
         }),
-        TypedBullModule.registerQueue({ name: "comments" }),
+        TypedBullModule.registerQueue(
+            { name: "comments" },
+            { name: "boundingBoxes" },
+            { name: "skeletals" },
+        ),
         UserModule,
         ProjectModule,
         ProjectUserRoleModule,
         AuthModule,
         SlideModule,
         CommentModule,
+        BoundingBoxModule,
+        SkeletalModule,
+        AiMicroserviceModule,
     ],
     controllers: [AppController],
     providers: [
