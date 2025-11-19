@@ -1,5 +1,11 @@
 # Monash Team 10 FIT 3161
 
+An AI-powered annotation platform for birds. Create bounding boxes and skeletal annotations, then edit and share slides with collaborators in real time.
+
+![Project](./Docs/images/app_project.png)
+
+![Home](./Docs/images/app_home.png)
+
 ## Backend Architecture
 
 ### Diagram
