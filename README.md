@@ -29,9 +29,23 @@
 - Annotation changes—whether REST uploads, WebSocket messages, or AI outputs—are validated, enqueued on BullMQ, processed, saved to PostgreSQL, and broadcast back to `slide:{id}` so everyone stays in sync.
 - Calling `/ai_auto/:project_id` kicks off the analyzer, which returns bounding boxes/skeletals that are injected into the same processing loop, allowing automated predictions to appear in the collaboration room immediately.
 
-## Local Network Access
+## Local network setup & run
 
-- Bring the stack up with `docker compose up --build`.
-- On the host machine determine the LAN IP address and share it (macOS: `ipconfig getifaddr en0`, Linux: `hostname -I`, Windows: `ipconfig`); teammates should open `http://<host-ip>:4200`.
-- The Angular client and Socket.IO reuse that host; override with `client/public/env.js` if needed.
-- Docker Compose brings up Postgres, Redis, the FastAPI analyzer, and the Nest backend using the multi-stage `server/Dockerfile`.
+- Step 1: Create a `.env` file inside `server/` with at least these values:
+
+  ```env
+  CLIENT_ORIGINS="*"
+  PORT=8080
+  SQL_PORT=5432
+  DATABASE="webAnnotation"
+  DATABASE_PASS="password"
+  USER_NAME="admin"       # change this if your Postgres user is different
+  HOST="localhost"
+  JWT_SECRET="webAnnotation_secret_key"
+  JWT_EXPIRES_IN="4d"
+  AI_ANALYZE_ENDPOINT="http://localhost:8000/analyze"
+  ```
+
+- Step 2: Start the stack by running `docker compose up --build` from the repo root so Docker spins up Postgres, Redis, the FastAPI analyzer, the Nest backend, and the Angular client.
+- Step 3: Share the host machine’s LAN IP with teammates (macOS: `ipconfig getifaddr en0`, Linux: `hostname -I`, Windows: `ipconfig`) and point browsers to `http://<host-ip>:4200`.
+- Step 4: The Angular client and Socket.IO reuse that host; override it via `client/public/env.js` if you need a custom API/WS host.
