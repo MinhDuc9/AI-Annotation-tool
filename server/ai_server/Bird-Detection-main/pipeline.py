@@ -1,9 +1,17 @@
 # pipeline.py
 import json
-import cv2
+import os
 import uuid
+from pathlib import Path
+
+import cv2
 import numpy as np
 import onnxruntime as ort
+
+YOLO_CONFIG_DIR = Path(os.getenv("YOLO_CONFIG_DIR", "/tmp/ultralytics"))
+YOLO_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("YOLO_CONFIG_DIR", str(YOLO_CONFIG_DIR))
+
 from ultralytics import YOLO
 
 from config import (
