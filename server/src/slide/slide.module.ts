@@ -10,8 +10,8 @@ import { ProjectUserRoleModule } from "../project-user-role/project-user-role.mo
 import { CommentModule } from "../comment/comment.module";
 import { Comment } from "../comment/entities/comment.entity";
 import { BoundingBox } from "../bounding-box/entities/bounding-box.entity";
-import { BoundingBoxModule } from "../bounding-box/bounding-box.module";
 import { Skeletal } from "../skeletal/entities/skeletal.entity";
+import { BoundingBoxModule } from "../bounding-box/bounding-box.module";
 import { SkeletalModule } from "../skeletal/skeletal.module";
 import { SlideGateway } from "./slide.gateway";
 
